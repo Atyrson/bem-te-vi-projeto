@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:projeto/Core/Config/api_config.dart';
 
 class PatientRegistrationScreen extends StatefulWidget {
   const PatientRegistrationScreen({super.key});
@@ -49,7 +50,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
         }
       }
 
-      final url = Uri.parse('http://localhost:8000/api/v1/patients');
+      final url = ApiConfig.endpoint('patients');
 
       // 3. Montar JSON
       final body = jsonEncode({

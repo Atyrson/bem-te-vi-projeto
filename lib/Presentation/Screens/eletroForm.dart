@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:projeto/Core/Constants/appStrings.dart';
+import 'package:projeto/Core/Config/api_config.dart';
 import 'package:projeto/Core/Providers/eletroFormProvider.dart';
 import 'package:projeto/Core/Providers/patientProvider.dart';
 import 'package:projeto/Presentation/CommonWidgets/appDrawer.dart';
@@ -325,8 +326,9 @@ class EletrodiagnosticoScreen extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
               onPressed: () async {
-                const String apiUrl =
-                    'http://localhost:8000/api/v1/electrodiagnosis';
+                final apiUrl = ApiConfig.endpoint(
+                  'electrodiagnosis',
+                ).toString();
 
                 final provider = context.read<EletrodiagnosticoProvider>();
 
@@ -348,7 +350,7 @@ class EletrodiagnosticoScreen extends StatelessWidget {
                 try {
                   // 4. Enviar os dados para a API
                   final response = await http.post(
-                    Uri.parse(apiUrl),
+                    ApiConfig.endpoint('electrodiagnosis'),
                     headers: {
                       'Content-Type': 'application/json; charset=UTF-8',
                     },

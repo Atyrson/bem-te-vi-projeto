@@ -1,13 +1,12 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+import 'package:projeto/Core/Config/api_config.dart';
 import 'package:projeto/Core/Models/GoalsModels.dart';
 import 'package:projeto/Core/Models/examModels.dart';
 import 'package:projeto/Core/Models/resultsModels.dart';
 
 class ApiService {
-  static const String _baseUrl = "http://localhost:8000/api/v1";
-
   Future<void> submitAnamnesis({
     required String patientName,
     String? patientPhone,
@@ -16,7 +15,7 @@ class ApiService {
     required DateTime birthDate,
     String? comments,
   }) async {
-    final url = Uri.parse('$_baseUrl/anamneses');
+    final url = ApiConfig.endpoint('anamneses');
 
     final body = {
       'patientName': patientName,
@@ -54,7 +53,7 @@ class ApiService {
     String? iq,
     required List<Goal> goals,
   }) async {
-    final url = Uri.parse('$_baseUrl/gas-evaluations');
+    final url = ApiConfig.endpoint('gas-evaluations');
 
     final body = {
       'patientIdentifier': patientIdentifier,
@@ -87,7 +86,7 @@ class ApiService {
   }
 
   Future<IscnsciResult> submitExam(Exam exam) async {
-    final url = Uri.parse('$_baseUrl/exams');
+    final url = ApiConfig.endpoint('exams');
 
     try {
       final response = await http.post(

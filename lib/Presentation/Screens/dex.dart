@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:projeto/Core/Constants/appStrings.dart';
+import 'package:projeto/Core/Config/api_config.dart';
 import 'package:projeto/Core/Providers/patientProvider.dart';
 import 'package:projeto/Presentation/CommonWidgets/appDrawer.dart';
 
@@ -125,7 +126,7 @@ class _DensitometryFormPageState extends State<DensitometryFormPage> {
         listen: false,
       );
 
-      final url = Uri.parse('http://localhost:8000/api/v1/densitometry');
+      final url = ApiConfig.endpoint('densitometry');
 
       // 2. Montagem do JSON
       final body = jsonEncode({

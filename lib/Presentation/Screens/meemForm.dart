@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+import 'package:projeto/Core/Config/api_config.dart';
 import 'package:projeto/Core/Providers/meemFormProvider.dart';
 import 'package:projeto/Core/Providers/patientProvider.dart';
 import 'package:projeto/Presentation/CommonWidgets/appDrawer.dart';
@@ -72,7 +73,7 @@ class _MeemFormScreenState extends State<MeemFormScreen> {
       _isLoading = true;
     });
 
-    final url = Uri.parse('http://localhost:8000/api/v1/meem-evaluations');
+    final url = ApiConfig.endpoint('meem-evaluations');
 
     try {
       final body = jsonEncode({

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
+import 'package:projeto/Core/Config/api_config.dart';
 import 'package:projeto/Core/Providers/patientProvider.dart';
 
 class PatientSearchDialog extends StatefulWidget {
@@ -26,7 +27,7 @@ class _PatientSearchDialogState extends State<PatientSearchDialog> {
 
   Future<void> _fetchPatients() async {
     try {
-      final url = Uri.parse('http://localhost:8000/api/v1/patients');
+      final url = ApiConfig.endpoint('patients');
 
       final response = await http.get(url);
 

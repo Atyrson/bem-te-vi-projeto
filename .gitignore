@@ -45,4 +45,11 @@ app.*.map.json
 /android/app/release
 
 
+# Ambientes virtuais Python
 /venv
+**/venv/
+
+# Artefatos locais de execução e geração de dados
+graphify-out/
+Backend/dados_exams.json
+Backend/dados_gas_evaluations.json
