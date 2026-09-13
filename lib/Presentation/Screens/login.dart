@@ -2,6 +2,8 @@ import 'dart:convert'; // IMPORTANTE: Para converter JSON
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http; // IMPORTANTE: Para fazer a requisição
 import 'package:projeto/Core/Constants/appStrings.dart';
+import 'package:projeto/Core/Constants/user_profiles.dart';
+import 'package:projeto/Core/Config/api_config.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -15,11 +17,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
 
   String? _selectedProfile;
-  final List<String> _profiles = [
-    'Fisioterapeuta',
-    'Estagiário/Pesquisador',
-    'Paciente',
-  ];
+  final List<String> _profiles = UserProfiles.labels;
 
   bool _isLoading = false; // Variável para controlar o loading
 
@@ -39,7 +37,7 @@ class _LoginScreenState extends State<LoginScreen> {
       _isLoading = true;
     });
 
-    final url = Uri.parse('http://localhost:8000/api/v1/login');
+    final url = ApiConfig.endpoint('login');
 
     try {
       final response = await http.post(
@@ -48,7 +46,7 @@ class _LoginScreenState extends State<LoginScreen> {
         body: jsonEncode({
           "email": _emailController.text,
           "password": _passwordController.text,
-          "profile": _selectedProfile,
+          "profile": UserProfiles.valueFor(_selectedProfile!),
         }),
       );
 

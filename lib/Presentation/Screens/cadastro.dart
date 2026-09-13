@@ -2,6 +2,8 @@ import 'dart:convert'; // Importar
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http; // Importar
 import 'package:projeto/Core/Constants/appStrings.dart';
+import 'package:projeto/Core/Constants/user_profiles.dart';
+import 'package:projeto/Core/Config/api_config.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -17,11 +19,7 @@ class _SignupScreenState extends State<SignupScreen> {
   final _confirmPasswordController = TextEditingController();
 
   String? _selectedProfile;
-  final List<String> _profiles = [
-    'Fisioterapeuta',
-    'Estagiário/Pesquisador',
-    'Paciente',
-  ];
+  final List<String> _profiles = UserProfiles.labels;
 
   bool _isLoading = false;
 
@@ -44,7 +42,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
     setState(() => _isLoading = true);
 
-    final url = Uri.parse('http://localhost:8000/api/v1/register');
+    final url = ApiConfig.endpoint('register');
 
     try {
       final response = await http.post(
@@ -54,7 +52,9 @@ class _SignupScreenState extends State<SignupScreen> {
           "name": _nameController.text,
           "email": _emailController.text,
           "password": _passwordController.text,
-          "profile": _selectedProfile ?? "Fisioterapeuta", // Default se nulo
+          "profile": UserProfiles.valueFor(
+            _selectedProfile ?? UserProfiles.defaultLabel,
+          ),
         }),
       );
 
