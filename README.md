@@ -1,31 +1,60 @@
-# Bem-Te-Vi — Sistema de Reabilitação
+# Bem-Te-Vi
 
-App Flutter com backend FastAPI para reabilitação de pacientes com lesão medular.
+Sistema para registro e acompanhamento da reabilitação de pessoas com lesão medular.
 
-## Setup do Backend
+Este repositório dá continuidade ao trabalho desenvolvido por **Letícia Arisa**. A aplicação reúne um frontend Flutter, uma API FastAPI e um banco de dados PostgreSQL.
 
-Consulte [Backend/README.md](Backend/README.md) para instruções completas de:
-- Configuração do PostgreSQL
-- Instalação de dependências Python
-- Criação das tabelas e população do banco
-- Usuários de teste para login
+## Funcionalidades
 
-## Executar no celular Android
+- Cadastro e consulta de pacientes
+- Autenticação por perfil de usuário
+- Registro de anamnese
+- Avaliações ASIA e GAS
+- Avaliações MEEM e eletrodiagnóstico
+- Densitometria óssea e acompanhamento de tendências
 
-O endereço da API é configurável no momento da execução. Para usar o padrão
-local no computador, execute apenas `flutter run`. Para um celular físico,
-conecte-o à mesma rede Wi-Fi do computador e informe o IP do computador:
+## Estrutura
+
+- `lib/` — aplicação Flutter
+- `Backend/` — API FastAPI, modelos, esquema do banco e scripts de população
+- `android/`, `ios/`, `linux/`, `macos/`, `windows/`, `web/` — plataformas suportadas pelo Flutter
+
+## Requisitos
+
+- Flutter SDK com Dart 3.8 ou superior
+- Python 3.10 ou superior
+- PostgreSQL 14 ou superior
+
+## Execução
+
+Consulte [Backend/README.md](Backend/README.md) para configurar o banco, instalar as dependências e popular os dados de teste.
+
+Com o PostgreSQL configurado, inicie a API:
+
+```bash
+cd Backend
+source venv/bin/activate
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Em outro terminal, inicie o Flutter:
 
 ```bash
 flutter pub get
-flutter devices
+flutter run
+```
+
+Para executar em um celular físico, conecte-o à mesma rede do computador e informe o endereço da API:
+
+```bash
 flutter run -d ID_DO_DISPOSITIVO \
   --dart-define=API_BASE_URL=http://IP_DO_COMPUTADOR:8000/api/v1
 ```
 
-O celular precisa estar com a depuração USB ativada e o computador autorizado
-nas opções de desenvolvedor. A API deve estar iniciada com:
+## Usuários de teste
 
-```bash
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
+| E-mail | Senha | Perfil |
+|---|---|---|
+| `admin@bemtevi.com` | `admin123` | Administrador |
+| `fisio@bemtevi.com` | `fisio123` | Fisioterapeuta |
+| `estagiario@bemtevi.com` | `estag123` | Estagiário/Pesquisador |
