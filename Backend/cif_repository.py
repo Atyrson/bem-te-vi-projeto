@@ -52,6 +52,12 @@ class CIFCalculoInvalido(ValueError):
         self.resultado = resultado
 
 
+class CIFRespostasInvalidas(ValueError):
+    def __init__(self, resultado: Any):
+        super().__init__("O rascunho contém respostas CIF inválidas")
+        self.resultado = resultado
+
+
 def mesclar_respostas(
     atuais: Mapping[str, Any], patch: Optional[Mapping[str, Any]]
 ) -> Dict[str, Any]:
@@ -139,11 +145,17 @@ class CIFAvaliacaoRepository:
         respostas: Mapping[str, Any],
         catalogo_versao: str,
         regras_versao: str,
+        validar_rascunho: Callable[
+            [str, str, Optional[str], Mapping[str, Any]], Any
+        ],
     ) -> CIFAvaliacaoRegistro:
         conn = self.connection_factory()
         cursor = conn.cursor()
         try:
-            self._buscar_sexo(cursor, paciente_id)
+            sexo = self._buscar_sexo(cursor, paciente_id)
+            validar_rascunho(
+                catalogo_versao, regras_versao, sexo, respostas
+            )
             cursor.execute(
                 f"INSERT INTO avaliacoes_cif "
                 "(paciente_id, data_avaliacao, status, catalogo_versao, regras_versao, respostas) "
@@ -203,6 +215,9 @@ class CIFAvaliacaoRepository:
         avaliacao_id: int,
         respostas: Optional[Mapping[str, Any]],
         data_avaliacao: Optional[date],
+        validar_rascunho: Callable[
+            [str, str, Optional[str], Mapping[str, Any]], Any
+        ],
     ) -> CIFAvaliacaoRegistro:
         conn = self.connection_factory()
         cursor = conn.cursor()
@@ -213,6 +228,13 @@ class CIFAvaliacaoRepository:
             if registro.status == "concluida":
                 raise CIFAvaliacaoConcluida
             atualizadas = mesclar_respostas(registro.respostas, respostas)
+            sexo = self._buscar_sexo(cursor, paciente_id)
+            validar_rascunho(
+                registro.catalogo_versao,
+                registro.regras_versao,
+                sexo,
+                atualizadas,
+            )
             cursor.execute(
                 f"UPDATE avaliacoes_cif SET respostas = %s, "
                 "data_avaliacao = COALESCE(%s, data_avaliacao), "
@@ -236,7 +258,9 @@ class CIFAvaliacaoRepository:
         paciente_id: int,
         avaliacao_id: int,
         respostas_patch: Optional[Mapping[str, Any]],
-        calcular: Callable[[Optional[str], Mapping[str, Any]], Any],
+        calcular: Callable[
+            [str, str, Optional[str], Mapping[str, Any]], Any
+        ],
         serializar_resultado: Callable[[Any], Dict[str, Any]],
     ) -> CIFAvaliacaoRegistro:
         """Conclui sob lock, recalculando contra o estado efetivamente salvo."""
@@ -256,7 +280,12 @@ class CIFAvaliacaoRepository:
                 return registro
 
             sexo = self._buscar_sexo(cursor, paciente_id)
-            resultado = calcular(sexo, respostas_finais)
+            resultado = calcular(
+                registro.catalogo_versao,
+                registro.regras_versao,
+                sexo,
+                respostas_finais,
+            )
             if not resultado.definitivo:
                 raise CIFCalculoInvalido(resultado)
             resultados = serializar_resultado(resultado)

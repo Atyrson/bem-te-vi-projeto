@@ -9,20 +9,28 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 StatusAvaliacaoCIF = Literal["rascunho", "concluida"]
 
 
-class CIFAvaliacaoCriar(BaseModel):
-    """Dados para abrir uma avaliação independente por paciente."""
+class CIFRascunhoCriar(BaseModel):
+    """Conteúdo inicial comum às duas rotas de criação de rascunho."""
 
     model_config = ConfigDict(extra="forbid")
 
-    paciente_id: Optional[int] = Field(
-        default=None,
-        validation_alias=AliasChoices("paciente_id", "patient_id")
-    )
     data_avaliacao: date = Field(
         default_factory=date.today,
         validation_alias=AliasChoices("data_avaliacao", "assessment_date"),
     )
     respostas: Dict[str, Any] = Field(default_factory=dict)
+
+
+class CIFAvaliacaoCriar(CIFRascunhoCriar):
+    """Criação pela rota genérica, com vínculo obrigatório no corpo."""
+
+    paciente_id: int = Field(
+        validation_alias=AliasChoices("paciente_id", "patient_id")
+    )
+
+
+class CIFAvaliacaoCriarNoPaciente(CIFRascunhoCriar):
+    """Criação pela rota que já identifica o paciente no caminho."""
 
 
 class CIFAvaliacaoAtualizar(BaseModel):

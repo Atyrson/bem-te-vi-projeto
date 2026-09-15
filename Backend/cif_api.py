@@ -9,17 +9,16 @@ from __future__ import annotations
 from dataclasses import fields, is_dataclass
 from datetime import date, datetime
 import copy
-import json
-from pathlib import Path
-from typing import Any, Mapping, Optional
+from typing import Annotated, Any, Mapping, Optional
 
 import psycopg2
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 try:  # Executa tanto como `uvicorn main:app` dentro de Backend quanto em testes.
     from cif_models import (
         CIFAvaliacaoAtualizar,
         CIFAvaliacaoCriar,
+        CIFAvaliacaoCriarNoPaciente,
         CIFAvaliacaoOperacao,
         CIFAvaliacaoResposta,
         CIFPreviaResposta,
@@ -31,12 +30,15 @@ try:  # Executa tanto como `uvicorn main:app` dentro de Backend quanto em testes
         CIFAvaliacaoRepository,
         CIFCalculoInvalido,
         CIFPacienteNaoEncontrado,
+        CIFRespostasInvalidas,
         mesclar_respostas,
     )
+    from cif_versions import CIFVersaoNaoSuportada, MOTOR_ATIVO, obter_motor
 except ModuleNotFoundError:  # pragma: no cover - importação como pacote.
     from Backend.cif_models import (
         CIFAvaliacaoAtualizar,
         CIFAvaliacaoCriar,
+        CIFAvaliacaoCriarNoPaciente,
         CIFAvaliacaoOperacao,
         CIFAvaliacaoResposta,
         CIFPreviaResposta,
@@ -48,29 +50,27 @@ except ModuleNotFoundError:  # pragma: no cover - importação como pacote.
         CIFAvaliacaoRepository,
         CIFCalculoInvalido,
         CIFPacienteNaoEncontrado,
+        CIFRespostasInvalidas,
         mesclar_respostas,
     )
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-CATALOG_PATH = PROJECT_ROOT / "catalogos" / "cif" / "catalogo.v0.1.json"
-CATALOG = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
-CATALOG_VERSION = str(CATALOG["catalog_version"])
-# O catálogo registra que as regras ainda estão pendentes de revisão clínica.
-# A versão é persistida para tornar explícito qual snapshot técnico foi usado.
-RULES_VERSION = "0.1.0-pending-review"
-
-try:
-    from scripts.cif.calculador import CalculadorCIF, EntradaCIF
-except ModuleNotFoundError:  # pragma: no cover - execução iniciada em Backend/.
-    import sys
-
-    sys.path.insert(0, str(PROJECT_ROOT))
-    from scripts.cif.calculador import CalculadorCIF, EntradaCIF
+    from Backend.cif_versions import CIFVersaoNaoSuportada, MOTOR_ATIVO, obter_motor
 
 
-calculator = CalculadorCIF(catalog_path=CATALOG_PATH)
+CATALOG = MOTOR_ATIVO.catalogo
+CATALOG_VERSION = MOTOR_ATIVO.catalogo_versao
+RULES_VERSION = MOTOR_ATIVO.regras_versao
+calculator = MOTOR_ATIVO.calculador
+
+
 repository = CIFAvaliacaoRepository()
 router = APIRouter(prefix="/api/v1", tags=["CIF"])
+
+
+def obter_repositorio_cif() -> CIFAvaliacaoRepository:
+    return repository
+
+
+RepositorioCIF = Annotated[CIFAvaliacaoRepository, Depends(obter_repositorio_cif)]
 
 
 def _json_ready(value: Any) -> Any:
@@ -107,10 +107,37 @@ def _registro_dict(registro: CIFAvaliacaoRegistro) -> dict[str, Any]:
     }
 
 
-def _calcular(sexo: Optional[str], respostas: Mapping[str, Any]) -> Any:
-    """Único ponto em que a API chama o calculador oficial."""
+def _calcular_versionado(
+    catalogo_versao: str,
+    regras_versao: str,
+    sexo: Optional[str],
+    respostas: Mapping[str, Any],
+) -> Any:
+    """Resolve a versão persistida antes de chamar o calculador oficial."""
 
-    return calculator.calcular(EntradaCIF(sexo=sexo, respostas=respostas))
+    motor = obter_motor(catalogo_versao, regras_versao)
+    from scripts.cif.calculador import EntradaCIF
+
+    return motor.calculador.calcular(EntradaCIF(sexo=sexo, respostas=respostas))
+
+
+def _validar_rascunho_versionado(
+    catalogo_versao: str,
+    regras_versao: str,
+    sexo: Optional[str],
+    respostas: Mapping[str, Any],
+) -> Any:
+    """Aceita pendências, mas rejeita respostas estruturalmente inválidas."""
+
+    resultado = _calcular_versionado(
+        catalogo_versao, regras_versao, sexo, respostas
+    )
+    erros_estruturais = [
+        erro for erro in resultado.erros if erro.codigo != "sexo_invalido"
+    ]
+    if erros_estruturais:
+        raise CIFRespostasInvalidas(resultado)
+    return resultado
 
 
 def _erro_banco(exc: Exception) -> HTTPException:
@@ -121,18 +148,26 @@ def _erro_banco(exc: Exception) -> HTTPException:
     )
 
 
-def _assert_path_patient(path_patient_id: Optional[int], body_patient_id: Optional[int]) -> int:
-    if path_patient_id is None and body_patient_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="paciente_id é obrigatório para criar uma avaliação CIF.",
-        )
-    if path_patient_id is not None and body_patient_id is not None and path_patient_id != body_patient_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="paciente_id do corpo não corresponde ao paciente da rota.",
-        )
-    return body_patient_id if path_patient_id is None else path_patient_id
+def _erro_versao(exc: CIFVersaoNaoSuportada) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": "versao_cif_incompativel",
+            "message": "A versão CIF desta avaliação não é suportada pelo servidor atual.",
+            "catalogo_versao": exc.catalogo_versao,
+            "regras_versao": exc.regras_versao,
+        },
+    )
+
+
+def _erro_respostas(resultado: Any) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail={
+            "message": "O rascunho contém respostas CIF inválidas.",
+            "resultado": _resultado_dict(resultado),
+        },
+    )
 
 
 @router.get("/cif/catalogo", summary="Consulta o catálogo versionado da CIF")
@@ -142,40 +177,73 @@ def consultar_catalogo() -> dict[str, Any]:
     return payload
 
 
+def _criar_rascunho(
+    paciente_id: int,
+    data_avaliacao: date,
+    respostas: Mapping[str, Any],
+    repositorio: CIFAvaliacaoRepository,
+) -> dict[str, Any]:
+    try:
+        registro = repositorio.criar(
+            paciente_id=paciente_id,
+            data_avaliacao=data_avaliacao,
+            respostas=respostas,
+            catalogo_versao=CATALOG_VERSION,
+            regras_versao=RULES_VERSION,
+            validar_rascunho=_validar_rascunho_versionado,
+        )
+        return _registro_dict(registro)
+    except CIFPacienteNaoEncontrado:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Paciente não encontrado.")
+    except CIFRespostasInvalidas as exc:
+        raise _erro_respostas(exc.resultado) from exc
+    except CIFVersaoNaoSuportada as exc:
+        raise _erro_versao(exc) from exc
+    except (psycopg2.Error, OSError) as exc:
+        raise _erro_banco(exc) from exc
+
+
 @router.post(
     "/cif-avaliacoes",
     response_model=CIFAvaliacaoResposta,
     status_code=status.HTTP_201_CREATED,
     summary="Cria um rascunho de avaliação CIF",
 )
+def criar_rascunho(
+    payload: CIFAvaliacaoCriar, repositorio: RepositorioCIF
+) -> dict[str, Any]:
+    return _criar_rascunho(
+        payload.paciente_id,
+        payload.data_avaliacao,
+        payload.respostas,
+        repositorio,
+    )
+
+
 @router.post(
     "/patients/{patient_id}/cif-avaliacoes",
     response_model=CIFAvaliacaoResposta,
     status_code=status.HTTP_201_CREATED,
-    include_in_schema=False,
+    summary="Cria um rascunho CIF para o paciente da rota",
 )
-def criar_rascunho(
-    payload: CIFAvaliacaoCriar, patient_id: Optional[int] = None
+def criar_rascunho_do_paciente(
+    patient_id: int,
+    payload: CIFAvaliacaoCriarNoPaciente,
+    repositorio: RepositorioCIF,
 ) -> dict[str, Any]:
-    paciente_id = _assert_path_patient(patient_id, payload.paciente_id)
-    try:
-        registro = repository.criar(
-            paciente_id=paciente_id,
-            data_avaliacao=payload.data_avaliacao,
-            respostas=payload.respostas,
-            catalogo_versao=CATALOG_VERSION,
-            regras_versao=RULES_VERSION,
-        )
-        return _registro_dict(registro)
-    except CIFPacienteNaoEncontrado:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Paciente não encontrado.")
-    except (psycopg2.Error, OSError) as exc:
-        raise _erro_banco(exc) from exc
+    return _criar_rascunho(
+        patient_id,
+        payload.data_avaliacao,
+        payload.respostas,
+        repositorio,
+    )
 
 
-def _obter_contexto(patient_id: int, assessment_id: int) -> tuple[CIFAvaliacaoRegistro, Optional[str]]:
+def _obter_contexto(
+    repositorio: CIFAvaliacaoRepository, patient_id: int, assessment_id: int
+) -> tuple[CIFAvaliacaoRegistro, Optional[str]]:
     try:
-        return repository.obter_com_sexo(patient_id, assessment_id)
+        return repositorio.obter_com_sexo(patient_id, assessment_id)
     except (CIFAvaliacaoNaoEncontrada, CIFPacienteNaoEncontrado):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Avaliação CIF não encontrada.")
     except (psycopg2.Error, OSError) as exc:
@@ -193,14 +261,18 @@ def _obter_contexto(patient_id: int, assessment_id: int) -> tuple[CIFAvaliacaoRe
     include_in_schema=False,
 )
 def atualizar_rascunho(
-    patient_id: int, assessment_id: int, payload: CIFAvaliacaoAtualizar
+    patient_id: int,
+    assessment_id: int,
+    payload: CIFAvaliacaoAtualizar,
+    repositorio: RepositorioCIF,
 ) -> dict[str, Any]:
     try:
-        registro = repository.atualizar_rascunho(
+        registro = repositorio.atualizar_rascunho(
             paciente_id=patient_id,
             avaliacao_id=assessment_id,
             respostas=payload.respostas,
             data_avaliacao=payload.data_avaliacao,
+            validar_rascunho=_validar_rascunho_versionado,
         )
         return _registro_dict(registro)
     except CIFAvaliacaoNaoEncontrada:
@@ -210,6 +282,10 @@ def atualizar_rascunho(
             status_code=status.HTTP_409_CONFLICT,
             detail="Avaliações CIF concluídas não podem ser editadas.",
         )
+    except CIFRespostasInvalidas as exc:
+        raise _erro_respostas(exc.resultado) from exc
+    except CIFVersaoNaoSuportada as exc:
+        raise _erro_versao(exc) from exc
     except (psycopg2.Error, OSError) as exc:
         raise _erro_banco(exc) from exc
 
@@ -220,11 +296,22 @@ def atualizar_rascunho(
     summary="Calcula uma prévia da avaliação CIF",
 )
 def calcular_previa(
-    patient_id: int, assessment_id: int, payload: CIFAvaliacaoOperacao
+    patient_id: int,
+    assessment_id: int,
+    payload: CIFAvaliacaoOperacao,
+    repositorio: RepositorioCIF,
 ) -> dict[str, Any]:
-    registro, sexo = _obter_contexto(patient_id, assessment_id)
+    registro, sexo = _obter_contexto(repositorio, patient_id, assessment_id)
     respostas = mesclar_respostas(registro.respostas, payload.respostas)
-    resultado = _calcular(sexo, respostas)
+    try:
+        resultado = _calcular_versionado(
+            registro.catalogo_versao,
+            registro.regras_versao,
+            sexo,
+            respostas,
+        )
+    except CIFVersaoNaoSuportada as exc:
+        raise _erro_versao(exc) from exc
     return {
         "avaliacao_id": registro.id,
         "paciente_id": registro.paciente_id,
@@ -242,14 +329,17 @@ def calcular_previa(
     summary="Valida, recalcula e conclui uma avaliação CIF",
 )
 def concluir_avaliacao(
-    patient_id: int, assessment_id: int, payload: CIFAvaliacaoOperacao
+    patient_id: int,
+    assessment_id: int,
+    payload: CIFAvaliacaoOperacao,
+    repositorio: RepositorioCIF,
 ) -> dict[str, Any]:
     try:
-        registro = repository.concluir(
+        registro = repositorio.concluir(
             paciente_id=patient_id,
             avaliacao_id=assessment_id,
             respostas_patch=payload.respostas,
-            calcular=_calcular,
+            calcular=_calcular_versionado,
             serializar_resultado=_resultado_dict,
         )
         return _registro_dict(registro)
@@ -268,6 +358,8 @@ def concluir_avaliacao(
                 "resultado": _resultado_dict(exc.resultado),
             },
         ) from exc
+    except CIFVersaoNaoSuportada as exc:
+        raise _erro_versao(exc) from exc
     except (psycopg2.Error, OSError) as exc:
         raise _erro_banco(exc) from exc
 
@@ -277,9 +369,11 @@ def concluir_avaliacao(
     response_model=list[CIFAvaliacaoResposta],
     summary="Lista avaliações CIF de um paciente",
 )
-def listar_avaliacoes(patient_id: int) -> list[dict[str, Any]]:
+def listar_avaliacoes(
+    patient_id: int, repositorio: RepositorioCIF
+) -> list[dict[str, Any]]:
     try:
-        return [_registro_dict(item) for item in repository.listar(patient_id)]
+        return [_registro_dict(item) for item in repositorio.listar(patient_id)]
     except CIFPacienteNaoEncontrado:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Paciente não encontrado.")
     except (psycopg2.Error, OSError) as exc:
@@ -291,9 +385,13 @@ def listar_avaliacoes(patient_id: int) -> list[dict[str, Any]]:
     response_model=CIFAvaliacaoResposta,
     summary="Consulta uma avaliação CIF",
 )
-def consultar_avaliacao(patient_id: int, assessment_id: int) -> dict[str, Any]:
-    registro, _ = _obter_contexto(patient_id, assessment_id)
+def consultar_avaliacao(
+    patient_id: int,
+    assessment_id: int,
+    repositorio: RepositorioCIF,
+) -> dict[str, Any]:
+    registro, _ = _obter_contexto(repositorio, patient_id, assessment_id)
     return _registro_dict(registro)
 
 
-__all__ = ["router"]
+__all__ = ["obter_repositorio_cif", "router"]
