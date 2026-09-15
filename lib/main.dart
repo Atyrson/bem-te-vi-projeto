@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:projeto/Core/Constants/appStrings.dart';
 import 'package:projeto/Core/Providers/asiaFormProvider.dart';
+import 'package:projeto/Core/Providers/cifFormProvider.dart';
 import 'package:projeto/Core/Providers/eletroFormProvider.dart';
 import 'package:projeto/Core/Providers/meemFormProvider.dart';
 import 'package:projeto/Core/Providers/patientProvider.dart';
 import 'package:projeto/Presentation/Screens/ananmeseForm.dart';
 import 'package:projeto/Presentation/Screens/asiaForm.dart';
 import 'package:projeto/Presentation/Screens/cadastro.dart';
+import 'package:projeto/Presentation/Screens/cifForm.dart';
 import 'package:projeto/Presentation/Screens/dex.dart';
 import 'package:projeto/Presentation/Screens/eletroForm.dart';
 import 'package:projeto/Presentation/Screens/gasForm.dart';
@@ -31,6 +33,7 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (context) => PatientProvider()),
         ChangeNotifierProvider(create: (context) => AsiaFormProvider()),
+        ChangeNotifierProvider(create: (context) => CifFormProvider()),
         ChangeNotifierProvider(create: (context) => MeemFormProvider()),
         ChangeNotifierProvider(create: (context) => MeemFormProvider()),
         ChangeNotifierProvider(
@@ -105,6 +108,15 @@ class MyApp extends StatelessWidget {
           '/pacienteCadastro': (context) => const PatientRegistrationScreen(),
           '/pacienteSearch': (context) => const PatientSearchDialog(),
           '/asia_form': (context) => const AsiaForm(),
+          '/cif_form': (context) {
+            final arguments = ModalRoute.of(context)?.settings.arguments;
+            final assessmentId = arguments is int
+                ? arguments
+                : arguments is Map && arguments['assessmentId'] is int
+                ? arguments['assessmentId'] as int
+                : null;
+            return CifFormScreen(assessmentId: assessmentId);
+          },
           '/gas_form': (context) => const GasForm(),
           '/anmenese_form': (context) => const AnmeneseForm(),
           '/meem_form': (context) => const MeemFormScreen(),
