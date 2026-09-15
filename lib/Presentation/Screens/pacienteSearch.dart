@@ -131,12 +131,26 @@ class _PatientSearchDialogState extends State<PatientSearchDialog> {
                             onTap: () {
                               print("Selecionado: ${patient['nome_completo']}");
 
-                              Provider.of<PatientProvider>(
-                                context,
-                                listen: false,
-                              ).setPatient(patient);
+                              final patientProvider =
+                                  Provider.of<PatientProvider>(
+                                    context,
+                                    listen: false,
+                                  );
+                              patientProvider.setPatient(patient);
+                              if (patientProvider.id == null) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Não foi possível selecionar este paciente: ID não informado.',
+                                    ),
+                                  ),
+                                );
+                                return;
+                              }
+
+                              final navigator = Navigator.of(context);
                               Navigator.pop(context);
-                              Navigator.pushNamed(context, '/asia_form');
+                              navigator.pushNamed('/anamnese_form');
                             },
                           );
                         },

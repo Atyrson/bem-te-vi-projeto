@@ -25,6 +25,25 @@ import 'package:projeto/Presentation/Screens/pacienteSearch.dart';
 import 'package:projeto/Presentation/Screens/selecao.dart';
 import 'package:provider/provider.dart';
 
+int? _routeInt(Object? value) {
+  if (value is int && value > 0) return value;
+  if (value is num && value.isFinite && value == value.round() && value > 0) {
+    return value.toInt();
+  }
+  return null;
+}
+
+int? _assessmentIdFromArguments(Object? arguments, [String? alias]) {
+  if (arguments is int || arguments is num) {
+    return _routeInt(arguments);
+  }
+  if (arguments is! Map) return null;
+
+  final value =
+      arguments['assessmentId'] ?? (alias == null ? null : arguments[alias]);
+  return _routeInt(value);
+}
+
 void main() {
   runApp(MyApp());
 }
@@ -117,22 +136,18 @@ class MyApp extends StatelessWidget {
           '/asia_form': (context) => const AsiaForm(),
           '/cif_form': (context) {
             final arguments = ModalRoute.of(context)?.settings.arguments;
-            final assessmentId = arguments is int
-                ? arguments
-                : arguments is Map && arguments['assessmentId'] is int
-                ? arguments['assessmentId'] as int
-                : null;
+            final assessmentId = _assessmentIdFromArguments(
+              arguments,
+              'assessment_id',
+            );
             return CifFormScreen(assessmentId: assessmentId);
           },
           '/cif_summary': (context) {
             final arguments = ModalRoute.of(context)?.settings.arguments;
-            final assessmentId = arguments is int
-                ? arguments
-                : arguments is Map && arguments['assessmentId'] is int
-                ? arguments['assessmentId'] as int
-                : arguments is Map && arguments['assessment_id'] is int
-                ? arguments['assessment_id'] as int
-                : null;
+            final assessmentId = _assessmentIdFromArguments(
+              arguments,
+              'assessment_id',
+            );
             return CifSummaryScreen(assessmentId: assessmentId);
           },
           '/cif_history': (context) => const CifHistoryScreen(),
@@ -156,6 +171,7 @@ class MyApp extends StatelessWidget {
             );
           },
           '/gas_form': (context) => const GasForm(),
+          '/anamnese_form': (context) => const AnmeneseForm(),
           '/anmenese_form': (context) => const AnmeneseForm(),
           '/meem_form': (context) => const MeemFormScreen(),
           '/eletro_form': (context) => const EletrodiagnosticoScreen(),

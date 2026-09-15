@@ -56,6 +56,14 @@ class _CifHistoryScreenState extends State<CifHistoryScreen> {
         ),
         actions: [
           IconButton(
+            key: const ValueKey('cif-history-next-asia-action'),
+            tooltip: 'Próximo módulo: ASIA',
+            onPressed: patient.id == null
+                ? null
+                : () => Navigator.of(context).pushNamed('/asia_form'),
+            icon: const Icon(Icons.arrow_forward),
+          ),
+          IconButton(
             key: const ValueKey('cif-history-new-action'),
             tooltip: 'Nova avaliação',
             onPressed: patient.id == null || history.isCreating

@@ -200,10 +200,10 @@ class _AnmeneseFormState extends State<AnmeneseForm> {
                 const SizedBox(height: 16),
 
                 OutlinedButton.icon(
-                  icon: const Icon(Icons.psychology_outlined),
-                  label: const Text('Iniciar Mini-Exame Mental (MEEM)'),
+                  icon: const Icon(Icons.history_outlined),
+                  label: const Text('Abrir histórico CIF'),
                   onPressed: () {
-                    Navigator.pushNamed(context, '/meem_form');
+                    Navigator.pushNamed(context, '/cif_history');
                   },
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.emerald,
