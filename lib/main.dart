@@ -153,18 +153,16 @@ class MyApp extends StatelessWidget {
           '/cif_history': (context) => const CifHistoryScreen(),
           '/cif_comparison': (context) {
             final arguments = ModalRoute.of(context)?.settings.arguments;
-            final firstAssessmentId =
-                arguments is Map && arguments['firstAssessmentId'] is int
-                ? arguments['firstAssessmentId'] as int
-                : arguments is Map && arguments['first_assessment_id'] is int
-                ? arguments['first_assessment_id'] as int
-                : null;
-            final secondAssessmentId =
-                arguments is Map && arguments['secondAssessmentId'] is int
-                ? arguments['secondAssessmentId'] as int
-                : arguments is Map && arguments['second_assessment_id'] is int
-                ? arguments['second_assessment_id'] as int
-                : null;
+            final firstAssessmentId = _comparisonIdFromArguments(
+              arguments,
+              'firstAssessmentId',
+              'first_assessment_id',
+            );
+            final secondAssessmentId = _comparisonIdFromArguments(
+              arguments,
+              'secondAssessmentId',
+              'second_assessment_id',
+            );
             return CifComparisonScreen(
               firstAssessmentId: firstAssessmentId,
               secondAssessmentId: secondAssessmentId,
@@ -181,4 +179,13 @@ class MyApp extends StatelessWidget {
       ),
     );
   }
+}
+
+int? _comparisonIdFromArguments(
+  Object? arguments,
+  String primaryKey,
+  String aliasKey,
+) {
+  if (arguments is! Map) return null;
+  return _routeInt(arguments[primaryKey] ?? arguments[aliasKey]);
 }

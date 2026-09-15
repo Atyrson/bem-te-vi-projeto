@@ -84,6 +84,8 @@ class FakeCifService implements CifServiceBase {
   bool failHistory = false;
   int historyCalls = 0;
   Duration previewDelay = Duration.zero;
+  Duration updateDelay = Duration.zero;
+  Duration conclusionDelay = Duration.zero;
   final List<Map<String, dynamic>> updatePatches = [];
   List<CifAssessmentHistoryEntry> historyEntries = const [];
   final Map<int, CifAssessment> assessmentsToConsult = {};
@@ -147,6 +149,7 @@ class FakeCifService implements CifServiceBase {
     DateTime? assessmentDate,
   }) async {
     updateCalls++;
+    if (updateDelay != Duration.zero) await Future<void>.delayed(updateDelay);
     updatePatches.add(Map<String, dynamic>.from(responses));
     if (failSave) throw const CifNetworkException('falha ao atualizar');
     final merged = Map<String, dynamic>.from(assessmentToConsult.responses);
@@ -203,6 +206,9 @@ class FakeCifService implements CifServiceBase {
     required Map<String, dynamic> responses,
   }) async {
     concludeCalls++;
+    if (conclusionDelay != Duration.zero) {
+      await Future<void>.delayed(conclusionDelay);
+    }
     if (failConclusion) throw const CifNetworkException('falha na conclusão');
     return fakeAssessment(
       id: assessmentId,

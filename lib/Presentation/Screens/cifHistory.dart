@@ -89,6 +89,9 @@ class _CifHistoryScreenState extends State<CifHistoryScreen> {
         'Selecione um paciente antes de abrir o histórico CIF.',
       );
     }
+    if (history.patientId != patient.id) {
+      return const Center(child: CircularProgressIndicator());
+    }
     if (history.isLoading && history.entries.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -271,6 +274,10 @@ class _CifHistoryScreenState extends State<CifHistoryScreen> {
           .read<CifHistoryProvider>()
           .createNewAssessment(patientId: patient.id);
       if (!mounted) return;
+      if (context.read<PatientProvider>().id != patient.id ||
+          created.patientId != patient.id) {
+        return;
+      }
       await Navigator.of(
         context,
       ).pushNamed('/cif_form', arguments: {'assessmentId': created.id});

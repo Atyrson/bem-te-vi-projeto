@@ -84,10 +84,19 @@ class _CifSummaryScreenState extends State<CifSummaryScreen> {
         'Selecione um paciente antes de abrir o quadro resumo CIF.',
       );
     }
+    final requestedAssessmentId = widget.assessmentId ?? provider.assessmentId;
+    final summary = provider.summary;
+    if (summary != null &&
+        (summary.patientId != patient.id ||
+            (requestedAssessmentId != null &&
+                summary.assessmentId != requestedAssessmentId))) {
+      return _blockedMessage(
+        'O resumo CIF não corresponde ao paciente ou à avaliação selecionada.',
+      );
+    }
     if (provider.isSummaryLoading && provider.summary == null) {
       return const Center(child: CircularProgressIndicator());
     }
-    final summary = provider.summary;
     if (summary == null) return _errorState(provider);
 
     return ListView(

@@ -79,6 +79,13 @@ class _CifComparisonScreenState extends State<CifComparisonScreen> {
     }
     final comparison = provider.comparison;
     if (comparison == null) return _errorState(provider);
+    if (comparison.patientId != patient.id ||
+        comparison.firstAssessmentId != widget.firstAssessmentId ||
+        comparison.secondAssessmentId != widget.secondAssessmentId) {
+      return _message(
+        'A comparação CIF não corresponde ao paciente ou às avaliações selecionadas.',
+      );
+    }
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 28),

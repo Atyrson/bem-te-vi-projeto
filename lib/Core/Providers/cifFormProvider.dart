@@ -475,6 +475,12 @@ class CifFormProvider extends ChangeNotifier {
       return null;
     }
 
+    final generation = _contextGeneration;
+    final operationPatientId = _patientId!;
+    final existingId = _assessmentId;
+    final responsePatch = _responsePatch;
+    final assessmentDate = _assessmentDate;
+
     _isSaving = true;
     _retryAction = () async {
       await saveDraft();
@@ -482,30 +488,45 @@ class CifFormProvider extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
     try {
-      final existingId = _assessmentId;
       CifAssessment saved;
       if (existingId == null) {
         await _ensureDraft();
+        if (!_isCurrentContext(generation, operationPatientId)) return null;
         saved = _assessment!;
       } else {
         saved = await service.atualizarRascunho(
-          patientId: _patientId!,
+          patientId: operationPatientId,
           assessmentId: existingId,
-          responses: _responsePatch,
-          assessmentDate: _assessmentDate,
+          responses: responsePatch,
+          assessmentDate: assessmentDate,
         );
+        if (!_isCurrentContext(generation, operationPatientId) ||
+            _assessmentId != existingId) {
+          return null;
+        }
+        if (saved.id != existingId || saved.patientId != operationPatientId) {
+          throw const CifApiException(
+            message:
+                'O paciente ou a avaliação retornados não correspondem ao contexto solicitado.',
+          );
+        }
         _applyAssessment(saved);
       }
+      if (!_isCurrentContext(generation, operationPatientId)) return null;
       _hasUnsavedChanges = false;
       _errorMessage = null;
       notifyListeners();
       return saved;
     } catch (error) {
-      _setOperationError(error);
+      if (_isCurrentContext(generation, operationPatientId)) {
+        _setOperationError(error);
+      }
       rethrow;
     } finally {
-      _isSaving = false;
-      notifyListeners();
+      if (_isCurrentContext(generation, operationPatientId)) {
+        _isSaving = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -517,7 +538,10 @@ class CifFormProvider extends ChangeNotifier {
       return null;
     }
 
+    final generation = _contextGeneration;
+    final operationPatientId = _patientId!;
     final requestNumber = ++_previewRequestNumber;
+    final responsePatch = _responsePatch;
     _isPreviewing = true;
     _retryAction = () async {
       await requestPreview();
@@ -526,14 +550,16 @@ class CifFormProvider extends ChangeNotifier {
     notifyListeners();
     try {
       await _ensureDraft();
+      if (!_isCurrentContext(generation, operationPatientId)) return null;
       final currentId = _assessmentId;
       if (currentId == null) return null;
       final response = await service.solicitarPrevia(
-        patientId: _patientId!,
+        patientId: operationPatientId,
         assessmentId: currentId,
-        responses: _responsePatch,
+        responses: responsePatch,
       );
-      if (requestNumber == _previewRequestNumber) {
+      if (_isCurrentContext(generation, operationPatientId) &&
+          requestNumber == _previewRequestNumber) {
         _preview = response;
         _validationResult = null;
         _errorMessage = null;
@@ -541,12 +567,14 @@ class CifFormProvider extends ChangeNotifier {
       }
       return response;
     } catch (error) {
-      if (requestNumber == _previewRequestNumber) {
+      if (_isCurrentContext(generation, operationPatientId) &&
+          requestNumber == _previewRequestNumber) {
         _setOperationError(error);
       }
       rethrow;
     } finally {
-      if (requestNumber == _previewRequestNumber) {
+      if (_isCurrentContext(generation, operationPatientId) &&
+          requestNumber == _previewRequestNumber) {
         _isPreviewing = false;
         notifyListeners();
       }
@@ -567,6 +595,9 @@ class CifFormProvider extends ChangeNotifier {
       return null;
     }
 
+    final generation = _contextGeneration;
+    final operationPatientId = _patientId!;
+    final requestPatch = _responsePatch;
     _isSubmitting = true;
     _retryAction = () async {
       await concludeAssessment();
@@ -575,13 +606,23 @@ class CifFormProvider extends ChangeNotifier {
     notifyListeners();
     try {
       await _ensureDraft();
+      if (!_isCurrentContext(generation, operationPatientId)) return null;
       final currentId = _assessmentId;
       if (currentId == null) return null;
       final completed = await service.concluirAvaliacao(
-        patientId: _patientId!,
+        patientId: operationPatientId,
         assessmentId: currentId,
-        responses: _responsePatch,
+        responses: requestPatch,
       );
+      if (!_isCurrentContext(generation, operationPatientId) ||
+          completed.id != currentId ||
+          completed.patientId != operationPatientId) {
+        if (!_isCurrentContext(generation, operationPatientId)) return null;
+        throw const CifApiException(
+          message:
+              'O paciente ou a avaliação retornados não correspondem ao contexto solicitado.',
+        );
+      }
       if (completed.status != 'concluida') {
         throw const CifApiException(
           message: 'O backend não confirmou a conclusão da avaliação CIF.',
@@ -593,11 +634,15 @@ class CifFormProvider extends ChangeNotifier {
       notifyListeners();
       return completed;
     } catch (error) {
-      _setOperationError(error);
+      if (_isCurrentContext(generation, operationPatientId)) {
+        _setOperationError(error);
+      }
       rethrow;
     } finally {
-      _isSubmitting = false;
-      notifyListeners();
+      if (_isCurrentContext(generation, operationPatientId)) {
+        _isSubmitting = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -673,10 +718,15 @@ class CifFormProvider extends ChangeNotifier {
       notifyListeners();
       return created.id;
     } catch (error) {
-      _setOperationError(error);
+      if (generation == _contextGeneration && patientId == _patientId) {
+        _setOperationError(error);
+      }
       rethrow;
     }
   }
+
+  bool _isCurrentContext(int generation, int patientId) =>
+      generation == _contextGeneration && patientId == _patientId;
 
   void _applyAssessment(
     CifAssessment value, {

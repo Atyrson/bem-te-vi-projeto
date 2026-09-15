@@ -100,6 +100,9 @@ class _CifFormScreenState extends State<CifFormScreen> {
         'Selecione um paciente antes de abrir o formulário CIF.',
       );
     }
+    if (provider.patientId != patient.id) {
+      return const Center(child: CircularProgressIndicator());
+    }
     if (patient.sexo != 'Feminino' && patient.sexo != 'Masculino') {
       return _blockedMessage(
         patient.sexo == null || patient.sexo!.isEmpty
@@ -142,6 +145,7 @@ class _CifFormScreenState extends State<CifFormScreen> {
 
   bool _shouldShowForm(PatientProvider patient, CifFormProvider provider) =>
       patient.id != null &&
+      provider.patientId == patient.id &&
       (patient.sexo == 'Feminino' || patient.sexo == 'Masculino') &&
       provider.form != null;
 

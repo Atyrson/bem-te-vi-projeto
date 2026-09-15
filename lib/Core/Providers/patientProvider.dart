@@ -7,8 +7,14 @@ class PatientProvider extends ChangeNotifier {
   Map<String, dynamic>? get patientData => _patientData;
 
   // --- GETTERS SIMPLES (Dados Diretos) ---
-  int? get id => _patientData?['id'];
-  String? get nome => _patientData?['nome_completo'];
+  int? get id {
+    final value = _patientData?['id'];
+    if (value is int) return value;
+    if (value is num && value == value.round()) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  String? get nome => _patientData?['nome_completo']?.toString();
 
   // Tratamento para garantir que números venham certos (int ou double)
   double? get peso => (_patientData?['peso'] as num?)?.toDouble();
@@ -55,7 +61,9 @@ class PatientProvider extends ChangeNotifier {
 
   // --- AÇÕES ---
   void setPatient(Map<String, dynamic> data) {
-    _patientData = data;
+    // A seleção é uma fotografia do registro retornado pela API. Assim, uma
+    // lista reutilizada ou uma mutação posterior não altera o contexto ativo.
+    _patientData = Map<String, dynamic>.from(data);
     notifyListeners();
   }
 

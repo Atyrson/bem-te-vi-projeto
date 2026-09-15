@@ -5,8 +5,12 @@ import 'package:provider/provider.dart';
 import 'package:projeto/Core/Config/api_config.dart';
 import 'package:projeto/Core/Providers/patientProvider.dart';
 
+typedef PatientLoader = Future<List<dynamic>> Function();
+
 class PatientSearchDialog extends StatefulWidget {
-  const PatientSearchDialog({super.key});
+  final PatientLoader? loadPatients;
+
+  const PatientSearchDialog({super.key, this.loadPatients});
 
   @override
   State<PatientSearchDialog> createState() => _PatientSearchDialogState();
@@ -27,25 +31,27 @@ class _PatientSearchDialogState extends State<PatientSearchDialog> {
 
   Future<void> _fetchPatients() async {
     try {
-      final url = ApiConfig.endpoint('patients');
-
-      final response = await http.get(url);
-
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        setState(() {
-          _allPatients = data;
-          _filteredPatients = data;
-          _isLoading = false;
-        });
-      } else {
-        setState(() => _isLoading = false);
-        print("Erro ao buscar pacientes: ${response.statusCode}");
-      }
+      final data = widget.loadPatients == null
+          ? await _loadPatientsFromApi()
+          : await widget.loadPatients!();
+      if (!mounted) return;
+      setState(() {
+        _allPatients = data;
+        _filteredPatients = data;
+        _isLoading = false;
+      });
     } catch (e) {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
       print("Erro de conexão: $e");
     }
+  }
+
+  Future<List<dynamic>> _loadPatientsFromApi() async {
+    final response = await http.get(ApiConfig.endpoint('patients'));
+    if (response.statusCode != 200) {
+      throw Exception('Erro ao buscar pacientes: ${response.statusCode}');
+    }
+    return jsonDecode(response.body) as List<dynamic>;
   }
 
   void _filterList(String query) {

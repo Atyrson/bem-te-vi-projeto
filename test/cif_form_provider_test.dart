@@ -140,4 +140,33 @@ void main() {
       expect(service.concludeCalls, 1);
     },
   );
+
+  test('não aplica PATCH antigo depois da troca de paciente', () async {
+    service.assessmentToConsult = fakeAssessment(
+      id: 44,
+      patientId: 1,
+      responses: {'f:E1': 0},
+    );
+    await provider.initialize(
+      patientId: 1,
+      patientName: 'Paciente Um',
+      sex: 'Feminino',
+      assessmentId: 44,
+    );
+    provider.setAnswer('f:E1', 4);
+    service.updateDelay = const Duration(milliseconds: 20);
+
+    final saving = provider.saveDraft();
+    await Future<void>.delayed(Duration.zero);
+    await provider.initialize(
+      patientId: 2,
+      patientName: 'Paciente Dois',
+      sex: 'Feminino',
+    );
+
+    expect(await saving, isNull);
+    expect(provider.patientId, 2);
+    expect(provider.assessmentId, isNull);
+    expect(provider.responses, isEmpty);
+  });
 }
