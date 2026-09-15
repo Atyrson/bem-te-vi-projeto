@@ -197,6 +197,44 @@ class CIFAvaliacaoAPITest(unittest.TestCase):
         self.assertEqual(generic.get("parameters", []), [])
         self.assertIn("post", nested)
 
+    def test_formulario_dinamico_por_sexo_e_openapi(self):
+        feminino = self.client.get("/api/v1/cif/formulario?sexo=Feminino")
+        masculino = self.client.get("/api/v1/cif/formulario?sexo=Masculino")
+
+        self.assertEqual(feminino.status_code, 200, feminino.text)
+        self.assertEqual(masculino.status_code, 200, masculino.text)
+        feminino_data = feminino.json()
+        masculino_data = masculino.json()
+        self.assertEqual(feminino_data["sexo"], "Feminino")
+        self.assertEqual(masculino_data["sexo"], "Masculino")
+        self.assertEqual(
+            feminino_data["total_campos"],
+            len(cif_api.calculator.campos_entrada_obrigatorios("Feminino")),
+        )
+        self.assertEqual(
+            masculino_data["total_campos"],
+            len(cif_api.calculator.campos_entrada_obrigatorios("Masculino")),
+        )
+        self.assertNotEqual(
+            [campo["chave"] for campo in feminino_data["campos"]],
+            [campo["chave"] for campo in masculino_data["campos"]],
+        )
+        self.assertEqual(feminino_data["escala"]["valores_permitidos"], [0, 1, 2, 3, 4])
+
+        schema = self.app.openapi()
+        endpoint = schema["paths"]["/api/v1/cif/formulario"]["get"]
+        self.assertEqual(
+            endpoint["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/CIFFormularioResposta",
+        )
+
+    def test_formulario_rejeita_sexo_ausente_vazio_outro_e_grafias_diferentes(self):
+        for query in ("", "?sexo=", "?sexo=Outro", "?sexo=feminino", "?sexo=FEMININO"):
+            with self.subTest(query=query):
+                response = self.client.get(f"/api/v1/cif/formulario{query}")
+                self.assertEqual(response.status_code, 422, response.text)
+                self.assertIn("sexo", response.text)
+
     def test_cria_atualiza_previa_e_retoma_rascunho(self):
         draft = self.criar()
         key = next(iter(self.respostas_validas()))
