@@ -321,6 +321,9 @@ class CifAssessment {
   DateTime get dataAvaliacao => assessmentDate;
   Map<String, dynamic> get respostas => responses;
   Map<String, dynamic>? get resultados => results;
+  CifSummary? get summary =>
+      results == null ? null : CifSummary.fromAssessment(this);
+  CifSummary? get resumo => summary;
   bool get isDraft => status == 'rascunho';
   bool get isCompleted => status == 'concluida';
 }
@@ -518,6 +521,230 @@ class CifPreview {
   List<CifValidationIssue> get erros => result.errors;
 }
 
+/// Resultado de um capítulo devolvido pelo backend.
+///
+/// [sourceField] é a célula/campo que originou o resultado (por exemplo,
+/// ``b:E8``). O cliente não interpreta esse campo nem recalcula [value].
+class CifChapterResult {
+  final String code;
+  final double? value;
+  final bool pending;
+  final String sourceField;
+
+  const CifChapterResult({
+    required this.code,
+    required this.value,
+    required this.pending,
+    required this.sourceField,
+  });
+
+  factory CifChapterResult.fromJson(
+    Map<String, dynamic> json, {
+    String? fallbackCode,
+  }) {
+    return CifChapterResult(
+      code: _readString(json['codigo'] ?? json['code'] ?? fallbackCode),
+      value: _readDouble(json['valor'] ?? json['value']),
+      pending: _readBool(json['pendente'] ?? json['pending']),
+      sourceField: _readString(
+        json['campo'] ??
+            json['origem'] ??
+            json['source_field'] ??
+            json['sourceField'] ??
+            json['field'],
+      ),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'codigo': code,
+    'valor': value,
+    'pendente': pending,
+    'campo': sourceField,
+  };
+
+  String get codigo => code;
+  double? get valor => value;
+  bool get pendente => pending;
+  String get campoOrigem => sourceField;
+  String get origem => sourceField;
+  String get campo => sourceField;
+  String get field => sourceField;
+}
+
+/// Resultado de uma área devolvido pelo backend.
+class CifAreaResult {
+  final String code;
+  final String name;
+  final double? value;
+  final bool pending;
+  final String sourceField;
+
+  const CifAreaResult({
+    required this.code,
+    required this.name,
+    required this.value,
+    required this.pending,
+    required this.sourceField,
+  });
+
+  factory CifAreaResult.fromJson(
+    Map<String, dynamic> json, {
+    String? fallbackCode,
+  }) {
+    return CifAreaResult(
+      code: _readString(json['codigo'] ?? json['code'] ?? fallbackCode),
+      name: _readString(json['nome'] ?? json['name']),
+      value: _readDouble(json['valor'] ?? json['value']),
+      pending: _readBool(json['pendente'] ?? json['pending']),
+      sourceField: _readString(
+        json['campo'] ??
+            json['origem'] ??
+            json['source_field'] ??
+            json['sourceField'] ??
+            json['field'],
+      ),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'codigo': code,
+    'nome': name,
+    'valor': value,
+    'pendente': pending,
+    'campo': sourceField,
+  };
+
+  String get codigo => code;
+  String get nome => name;
+  double? get valor => value;
+  bool get pendente => pending;
+  String get campoOrigem => sourceField;
+  String get campo => sourceField;
+}
+
+/// Quadro resumo da avaliação CIF produzido pelo backend.
+///
+/// As coleções mantêm a ordem do JSON recebido. Nenhum item é criado,
+/// removido, arredondado ou calculado no Dart.
+class CifSummary {
+  final int assessmentId;
+  final int patientId;
+  final DateTime assessmentDate;
+  final String status;
+  final String catalogVersion;
+  final String rulesVersion;
+  final bool definitive;
+  final String? resultStatus;
+  final Map<String, dynamic> responses;
+  final Map<String, CifChapterResult> chapters;
+  final Map<String, CifAreaResult> areas;
+  final double? generalResult;
+
+  const CifSummary({
+    required this.assessmentId,
+    required this.patientId,
+    required this.assessmentDate,
+    required this.status,
+    required this.catalogVersion,
+    required this.rulesVersion,
+    required this.definitive,
+    required this.resultStatus,
+    required this.responses,
+    required this.chapters,
+    required this.areas,
+    required this.generalResult,
+  });
+
+  /// Aceita a resposta completa de ``GET /cif-avaliacoes/{id}``.
+  factory CifSummary.fromJson(Map<String, dynamic> json) {
+    final rawResult =
+        json['resultados'] ?? json['results'] ?? json['resultado'];
+    final result = rawResult is Map
+        ? Map<String, dynamic>.from(rawResult)
+        : json;
+    final rawChapters =
+        result['capitulos'] ?? result['chapters'] ?? result['chapter_results'];
+    final rawAreas = result['areas'] ?? result['area_results'];
+
+    return CifSummary(
+      assessmentId:
+          _readInt(
+            json['avaliacao_id'] ?? json['assessment_id'] ?? json['id'],
+          ) ??
+          0,
+      patientId: _readInt(json['paciente_id'] ?? json['patient_id']) ?? 0,
+      assessmentDate:
+          _readDate(json['data_avaliacao'] ?? json['assessment_date']) ??
+          DateTime.now(),
+      status: _readString(json['status']),
+      catalogVersion: _readString(
+        json['catalogo_versao'] ?? json['catalog_version'],
+      ),
+      rulesVersion: _readString(json['regras_versao'] ?? json['rules_version']),
+      definitive: _readBool(
+        result['definitivo'] ?? result['definitive'] ?? json['definitivo'],
+      ),
+      resultStatus: _readNullableString(
+        result['status'] ?? result['result_status'],
+      ),
+      responses: _readMap(json['respostas'] ?? json['responses']),
+      chapters: _readChapterResults(rawChapters),
+      areas: _readAreaResults(rawAreas),
+      generalResult: _readDouble(
+        result.containsKey('resultado_geral')
+            ? result['resultado_geral']
+            : result.containsKey('general_result')
+            ? result['general_result']
+            : result.containsKey('resultadoGeral')
+            ? result['resultadoGeral']
+            : null,
+      ),
+    );
+  }
+
+  factory CifSummary.fromAssessment(CifAssessment assessment) {
+    return CifSummary.fromJson({
+      'id': assessment.id,
+      'paciente_id': assessment.patientId,
+      'data_avaliacao': _dateOnly(assessment.assessmentDate),
+      'status': assessment.status,
+      'catalogo_versao': assessment.catalogVersion,
+      'regras_versao': assessment.rulesVersion,
+      'respostas': assessment.responses,
+      'resultados': assessment.results,
+    });
+  }
+
+  Map<String, dynamic> toJson() => {
+    'avaliacao_id': assessmentId,
+    'paciente_id': patientId,
+    'data_avaliacao': _dateOnly(assessmentDate),
+    'status': status,
+    'catalogo_versao': catalogVersion,
+    'regras_versao': rulesVersion,
+    'definitivo': definitive,
+    'resultado_status': resultStatus,
+    'respostas': Map<String, dynamic>.from(responses),
+    'capitulos': chapters.map((key, value) => MapEntry(key, value.toJson())),
+    'areas': areas.map((key, value) => MapEntry(key, value.toJson())),
+    'resultado_geral': generalResult,
+  };
+
+  int get avaliacaoId => assessmentId;
+  int get pacienteId => patientId;
+  DateTime get dataAvaliacao => assessmentDate;
+  String get catalogoVersao => catalogVersion;
+  String get regrasVersao => rulesVersion;
+  bool get definitivo => definitive;
+  Map<String, dynamic> get respostasOriginais => responses;
+  Map<String, CifChapterResult> get capitulos => chapters;
+  Map<String, CifAreaResult> get areasPorResultado => areas;
+  Map<String, CifChapterResult> get chapterResults => chapters;
+  Map<String, CifAreaResult> get areaResults => areas;
+  double? get resultadoGeral => generalResult;
+}
+
 class CifApiException implements Exception {
   final int? statusCode;
   final String message;
@@ -556,6 +783,14 @@ typedef CIFAvaliacao = CifAssessment;
 typedef CifDraft = CifAssessment;
 typedef CIFRascunho = CifAssessment;
 typedef CIFPrevia = CifPreview;
+typedef CIFResumo = CifSummary;
+typedef CifResumo = CifSummary;
+typedef CIFResultadoCapitulo = CifChapterResult;
+typedef CifCapituloResultado = CifChapterResult;
+typedef CifChapterSummary = CifChapterResult;
+typedef CIFResultadoArea = CifAreaResult;
+typedef CifAreaResultado = CifAreaResult;
+typedef CifAreaSummary = CifAreaResult;
 typedef CIFProblemaValidacao = CifValidationIssue;
 typedef CifPending = CifValidationIssue;
 typedef CifError = CifValidationIssue;
@@ -629,6 +864,36 @@ Map<String, CifPartialResult> _readPartialResults(dynamic value) {
       key.toString(),
       CifPartialResult.fromJson(
         item is Map ? Map<String, dynamic>.from(item) : const {},
+      ),
+    ),
+  );
+}
+
+Map<String, CifChapterResult> _readChapterResults(dynamic value) {
+  if (value is! Map) return const {};
+  return Map.unmodifiable(
+    value.map(
+      (key, item) => MapEntry(
+        key.toString(),
+        CifChapterResult.fromJson(
+          item is Map ? Map<String, dynamic>.from(item) : const {},
+          fallbackCode: key.toString(),
+        ),
+      ),
+    ),
+  );
+}
+
+Map<String, CifAreaResult> _readAreaResults(dynamic value) {
+  if (value is! Map) return const {};
+  return Map.unmodifiable(
+    value.map(
+      (key, item) => MapEntry(
+        key.toString(),
+        CifAreaResult.fromJson(
+          item is Map ? Map<String, dynamic>.from(item) : const {},
+          fallbackCode: key.toString(),
+        ),
       ),
     ),
   );

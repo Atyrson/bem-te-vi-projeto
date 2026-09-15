@@ -309,6 +309,23 @@ class _CifFormScreenState extends State<CifFormScreen> {
   }
 
   Widget _buildActions(CifFormProvider provider) {
+    if (provider.isCompleted) {
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+          child: ElevatedButton.icon(
+            onPressed: provider.assessmentId == null
+                ? null
+                : () => Navigator.of(context).pushNamed(
+                    '/cif_summary',
+                    arguments: {'assessmentId': provider.assessmentId},
+                  ),
+            icon: const Icon(Icons.table_view_outlined),
+            label: const Text('Ver quadro resumo'),
+          ),
+        ),
+      );
+    }
     final busy =
         provider.isSaving || provider.isPreviewing || provider.isSubmitting;
     return SafeArea(

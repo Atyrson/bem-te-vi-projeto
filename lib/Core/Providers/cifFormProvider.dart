@@ -17,6 +17,7 @@ class CifFormProvider extends ChangeNotifier {
   CifAssessment? _assessment;
   CifPreview? _preview;
   CifPreviewResult? _validationResult;
+  CifSummary? _summary;
   final Map<String, dynamic> _responses = {};
   final Set<String> _removedResponseKeys = {};
   final Set<String> _incompatiblePendingRemoval = {};
@@ -29,16 +30,22 @@ class CifFormProvider extends ChangeNotifier {
   String? _status;
   String? _errorMessage;
   String? _contextError;
+  String? _summaryError;
   bool _isLoading = false;
   bool _isSaving = false;
   bool _isPreviewing = false;
   bool _isSubmitting = false;
+  bool _isSummaryLoading = false;
   bool _hasUnsavedChanges = false;
   bool _sexChanged = false;
   int _previewRequestNumber = 0;
+  int _summaryRequestNumber = 0;
   int _contextGeneration = 0;
   Future<int>? _draftCreationFuture;
   Future<void> Function()? _retryAction;
+  Future<void> Function()? _summaryRetryAction;
+  Future<CifSummary?>? _summaryFuture;
+  String? _summaryRequestKey;
   String? _initializationKey;
 
   CifFormProvider({CifServiceBase? service})
@@ -48,22 +55,30 @@ class CifFormProvider extends ChangeNotifier {
   CifAssessment? get assessment => _assessment;
   CifPreview? get preview => _preview;
   CifPreviewResult? get validationResult => _validationResult;
+  CifSummary? get summary => _summary;
+  CifSummary? get resumo => _summary;
   int? get patientId => _patientId;
   String? get patientName => _patientName;
   String? get sex => _sex;
   int? get assessmentId => _assessmentId;
   DateTime? get assessmentDate => _assessmentDate;
   String? get status => _status;
-  String? get errorMessage => _errorMessage ?? _contextError;
+  String? get errorMessage => _errorMessage ?? _summaryError ?? _contextError;
   String? get contextError => _contextError;
+  String? get summaryError => _summaryError;
+  String? get erroResumo => _summaryError;
   bool get isLoading => _isLoading;
   bool get isSaving => _isSaving;
   bool get isPreviewing => _isPreviewing;
   bool get isSubmitting => _isSubmitting;
+  bool get isSummaryLoading => _isSummaryLoading;
+  bool get carregandoResumo => _isSummaryLoading;
   bool get hasUnsavedChanges => _hasUnsavedChanges;
   bool get sexChanged => _sexChanged;
   bool get hasForm => _form != null;
   bool get isCompleted => _status == 'concluida';
+  bool get canViewSummary => _summary != null;
+  bool get podeVerResumo => canViewSummary;
 
   Map<String, dynamic> get responses => Map.unmodifiable(_responses);
   Map<String, dynamic> get respostas => responses;
@@ -225,6 +240,158 @@ class CifFormProvider extends ChangeNotifier {
     required String? patientName,
     required String? sex,
   }) => initialize(patientId: patientId, patientName: patientName, sex: sex);
+
+  /// Carrega o quadro resumo usando a mesma consulta da avaliação.
+  ///
+  /// A leitura é deliberadamente independente das respostas locais: uma
+  /// falha de rede, versão ou contexto nunca limpa [_responses].
+  Future<CifSummary?> loadSummary({
+    required int? patientId,
+    required int? assessmentId,
+    String? sex,
+  }) {
+    final key = '$patientId|$assessmentId|${sex ?? _sex ?? ''}';
+    if (_summaryRequestKey == key &&
+        _isSummaryLoading &&
+        _summaryFuture != null) {
+      return _summaryFuture!;
+    }
+
+    _summaryRetryAction = () async {
+      await loadSummary(
+        patientId: patientId,
+        assessmentId: assessmentId,
+        sex: sex,
+      );
+    };
+    final future = _loadSummary(
+      key: key,
+      patientId: patientId,
+      assessmentId: assessmentId,
+      sex: sex,
+    );
+    _summaryFuture = future;
+    return future;
+  }
+
+  Future<CifSummary?> carregarResumo({
+    required int? patientId,
+    required int? assessmentId,
+    String? sex,
+  }) => loadSummary(patientId: patientId, assessmentId: assessmentId, sex: sex);
+
+  Future<void> retrySummary() async {
+    final retry = _summaryRetryAction;
+    if (retry != null) await retry();
+  }
+
+  Future<CifSummary?> _loadSummary({
+    required String key,
+    required int? patientId,
+    required int? assessmentId,
+    required String? sex,
+  }) async {
+    final requestNumber = ++_summaryRequestNumber;
+    _summaryRequestKey = key;
+    _isSummaryLoading = true;
+    _summary = null;
+    _summaryError = null;
+    notifyListeners();
+
+    try {
+      if (patientId == null) {
+        throw const CifApiException(
+          message: 'Selecione um paciente antes de abrir o quadro resumo CIF.',
+        );
+      }
+      if (assessmentId == null) {
+        throw const CifApiException(
+          message: 'A avaliação CIF não foi informada para o quadro resumo.',
+        );
+      }
+      if (_patientId != null && _patientId != patientId) {
+        throw const CifApiException(
+          message: 'O paciente selecionado não corresponde à avaliação CIF.',
+        );
+      }
+
+      final assessment = await service.consultarResumo(
+        patientId: patientId,
+        assessmentId: assessmentId,
+      );
+      if (requestNumber != _summaryRequestNumber) return null;
+
+      if (assessment.id != assessmentId || assessment.patientId != patientId) {
+        throw const CifApiException(
+          message:
+              'O paciente ou a avaliação retornados não correspondem ao contexto solicitado.',
+        );
+      }
+      if (!assessment.isCompleted) {
+        throw const CifApiException(
+          message:
+              'O quadro resumo só está disponível após a conclusão aceita pelo backend.',
+        );
+      }
+      if (assessment.results == null) {
+        throw const CifApiException(
+          message:
+              'A avaliação foi concluída, mas o backend não retornou resultados para o resumo.',
+        );
+      }
+
+      // Quando a tela ainda não carregou o formulário, consulta-se somente
+      // sua versão atual para detectar um catálogo incompatível. Esse
+      // formulário nunca é usado para calcular ou preencher o resumo.
+      final effectiveSex = sex ?? _sex;
+      CifForm? currentForm = _form;
+      if (currentForm == null &&
+          (effectiveSex == 'Feminino' || effectiveSex == 'Masculino')) {
+        currentForm = await service.carregarFormulario(effectiveSex!);
+        if (requestNumber != _summaryRequestNumber) return null;
+      }
+      if (currentForm != null &&
+          (currentForm.catalogVersion != assessment.catalogVersion ||
+              currentForm.rulesVersion != assessment.rulesVersion)) {
+        throw const CifApiException(
+          message:
+              'A versão do catálogo ou das regras desta avaliação não é compatível com a versão atual.',
+        );
+      }
+
+      final loadedSummary = CifSummary.fromAssessment(assessment);
+      if (!loadedSummary.definitive) {
+        throw const CifApiException(
+          message:
+              'A avaliação não possui resultado definitivo validado pelo backend.',
+        );
+      }
+      if (requestNumber == _summaryRequestNumber) {
+        _summary = loadedSummary;
+        _summaryError = null;
+        notifyListeners();
+      }
+      return loadedSummary;
+    } catch (error) {
+      if (requestNumber == _summaryRequestNumber) {
+        _summaryError = _summaryErrorMessage(error);
+        notifyListeners();
+      }
+      rethrow;
+    } finally {
+      if (requestNumber == _summaryRequestNumber) {
+        _isSummaryLoading = false;
+        _summaryFuture = null;
+        notifyListeners();
+      }
+    }
+  }
+
+  String _summaryErrorMessage(Object error) {
+    if (error is CifApiException) return error.message;
+    if (error is CifNetworkException) return error.message;
+    return 'Não foi possível carregar o quadro resumo da avaliação CIF.';
+  }
 
   void setAssessmentDate(DateTime date) {
     _assessmentDate = DateTime(date.year, date.month, date.day);
@@ -563,6 +730,13 @@ class CifFormProvider extends ChangeNotifier {
     _assessment = null;
     _preview = null;
     _validationResult = null;
+    _summaryRequestNumber++;
+    _summary = null;
+    _summaryError = null;
+    _isSummaryLoading = false;
+    _summaryFuture = null;
+    _summaryRequestKey = null;
+    _summaryRetryAction = null;
     _responses.clear();
     _removedResponseKeys.clear();
     _incompatiblePendingRemoval.clear();

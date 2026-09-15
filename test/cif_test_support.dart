@@ -50,16 +50,19 @@ CifAssessment fakeAssessment({
   String status = 'rascunho',
   Map<String, dynamic> responses = const {},
   DateTime? date,
+  Map<String, dynamic>? results,
+  String catalogVersion = 'test-catalog',
+  String rulesVersion = 'test-rules',
 }) {
   return CifAssessment(
     id: id,
     patientId: patientId,
     assessmentDate: date ?? DateTime(2026, 9, 15),
     status: status,
-    catalogVersion: 'test-catalog',
-    rulesVersion: 'test-rules',
+    catalogVersion: catalogVersion,
+    rulesVersion: rulesVersion,
     responses: Map<String, dynamic>.from(responses),
-    results: null,
+    results: results,
     createdAt: null,
     updatedAt: null,
     completedAt: status == 'concluida' ? DateTime(2026, 9, 15) : null,
@@ -77,6 +80,7 @@ class FakeCifService implements CifServiceBase {
   bool failSave = false;
   bool failPreview = false;
   bool failConclusion = false;
+  bool failConsult = false;
   Duration previewDelay = Duration.zero;
   final List<Map<String, dynamic>> updatePatches = [];
   CifAssessment assessmentToConsult = fakeAssessment(
@@ -115,6 +119,7 @@ class FakeCifService implements CifServiceBase {
     required int assessmentId,
   }) async {
     consultCalls++;
+    if (failConsult) throw const CifNetworkException('falha ao consultar');
     return assessmentToConsult;
   }
 

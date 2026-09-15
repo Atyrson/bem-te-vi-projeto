@@ -293,3 +293,17 @@ class CifService implements CifServiceBase {
 
 typedef CIFService = CifService;
 typedef CIFServiceBase = CifServiceBase;
+
+/// A consulta do quadro resumo usa o mesmo recurso de avaliação já existente.
+/// O alias evita criar uma segunda rota HTTP ou um contrato de entrada novo.
+extension CifSummaryService on CifServiceBase {
+  Future<CifAssessment> consultarResumo({
+    required int patientId,
+    required int assessmentId,
+  }) => consultarRascunho(patientId: patientId, assessmentId: assessmentId);
+
+  Future<CifAssessment> loadSummary({
+    required int patientId,
+    required int assessmentId,
+  }) => consultarRascunho(patientId: patientId, assessmentId: assessmentId);
+}

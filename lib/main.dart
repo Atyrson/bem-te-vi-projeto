@@ -10,6 +10,7 @@ import 'package:projeto/Presentation/Screens/ananmeseForm.dart';
 import 'package:projeto/Presentation/Screens/asiaForm.dart';
 import 'package:projeto/Presentation/Screens/cadastro.dart';
 import 'package:projeto/Presentation/Screens/cifForm.dart';
+import 'package:projeto/Presentation/Screens/cifSummary.dart';
 import 'package:projeto/Presentation/Screens/dex.dart';
 import 'package:projeto/Presentation/Screens/eletroForm.dart';
 import 'package:projeto/Presentation/Screens/gasForm.dart';
@@ -116,6 +117,17 @@ class MyApp extends StatelessWidget {
                 ? arguments['assessmentId'] as int
                 : null;
             return CifFormScreen(assessmentId: assessmentId);
+          },
+          '/cif_summary': (context) {
+            final arguments = ModalRoute.of(context)?.settings.arguments;
+            final assessmentId = arguments is int
+                ? arguments
+                : arguments is Map && arguments['assessmentId'] is int
+                ? arguments['assessmentId'] as int
+                : arguments is Map && arguments['assessment_id'] is int
+                ? arguments['assessment_id'] as int
+                : null;
+            return CifSummaryScreen(assessmentId: assessmentId);
           },
           '/gas_form': (context) => const GasForm(),
           '/anmenese_form': (context) => const AnmeneseForm(),
