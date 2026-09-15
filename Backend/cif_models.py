@@ -14,7 +14,8 @@ class CIFAvaliacaoCriar(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    paciente_id: int = Field(
+    paciente_id: Optional[int] = Field(
+        default=None,
         validation_alias=AliasChoices("paciente_id", "patient_id")
     )
     data_avaliacao: date = Field(

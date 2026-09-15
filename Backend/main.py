@@ -21,6 +21,7 @@ from models import (
     LoginRequest,
     DensitometryCreate
 )
+from cif_api import router as cif_router
 
 app = FastAPI(title="Bem-Te-Vi API", version="1.0")
 
@@ -31,6 +32,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(cif_router)
 
 @app.get("/")
 def read_root():
