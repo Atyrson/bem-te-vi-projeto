@@ -9,10 +9,10 @@ from __future__ import annotations
 from dataclasses import fields, is_dataclass
 from datetime import date, datetime
 import copy
-from typing import Annotated, Any, Mapping, Optional
+from typing import Annotated, Any, Mapping, Optional, cast, get_args
 
 import psycopg2
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 try:  # Executa tanto como `uvicorn main:app` dentro de Backend quanto em testes.
     from cif_models import (
@@ -21,7 +21,9 @@ try:  # Executa tanto como `uvicorn main:app` dentro de Backend quanto em testes
         CIFAvaliacaoCriarNoPaciente,
         CIFAvaliacaoOperacao,
         CIFAvaliacaoResposta,
+        CIFFormularioResposta,
         CIFPreviaResposta,
+        SexoCIF,
     )
     from cif_repository import (
         CIFAvaliacaoConcluida,
@@ -34,6 +36,7 @@ try:  # Executa tanto como `uvicorn main:app` dentro de Backend quanto em testes
         mesclar_respostas,
     )
     from cif_versions import CIFVersaoNaoSuportada, MOTOR_ATIVO, obter_motor
+    from cif_formulario import construir_formulario
 except ModuleNotFoundError:  # pragma: no cover - importação como pacote.
     from Backend.cif_models import (
         CIFAvaliacaoAtualizar,
@@ -41,7 +44,9 @@ except ModuleNotFoundError:  # pragma: no cover - importação como pacote.
         CIFAvaliacaoCriarNoPaciente,
         CIFAvaliacaoOperacao,
         CIFAvaliacaoResposta,
+        CIFFormularioResposta,
         CIFPreviaResposta,
+        SexoCIF,
     )
     from Backend.cif_repository import (
         CIFAvaliacaoConcluida,
@@ -54,6 +59,7 @@ except ModuleNotFoundError:  # pragma: no cover - importação como pacote.
         mesclar_respostas,
     )
     from Backend.cif_versions import CIFVersaoNaoSuportada, MOTOR_ATIVO, obter_motor
+    from Backend.cif_formulario import construir_formulario
 
 
 CATALOG = MOTOR_ATIVO.catalogo
@@ -168,6 +174,38 @@ def _erro_respostas(resultado: Any) -> HTTPException:
             "resultado": _resultado_dict(resultado),
         },
     )
+
+
+def _validar_sexo_formulario(sexo: Optional[str]) -> SexoCIF:
+    if sexo in get_args(SexoCIF):
+        return cast(SexoCIF, sexo)
+    codigo = "sexo_ausente" if sexo is None else "sexo_invalido"
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail={
+            "code": codigo,
+            "message": (
+                "O parâmetro sexo é obrigatório e deve ser exatamente "
+                "'Feminino' ou 'Masculino'."
+            ),
+            "valor": sexo,
+        },
+    )
+
+
+@router.get(
+    "/cif/formulario",
+    response_model=CIFFormularioResposta,
+    summary="Consulta o formulário CIF aplicável por sexo",
+)
+def consultar_formulario(
+    sexo: Optional[str] = Query(
+        default=None,
+        description="Sexo autoritativo do paciente: Feminino ou Masculino.",
+    )
+) -> CIFFormularioResposta:
+    sexo_validado = _validar_sexo_formulario(sexo)
+    return construir_formulario(MOTOR_ATIVO, sexo_validado)
 
 
 @router.get("/cif/catalogo", summary="Consulta o catálogo versionado da CIF")

@@ -7,6 +7,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 StatusAvaliacaoCIF = Literal["rascunho", "concluida"]
+SexoCIF = Literal["Masculino", "Feminino"]
 
 
 class CIFRascunhoCriar(BaseModel):
@@ -79,3 +80,31 @@ class CIFPreviaResposta(BaseModel):
     status: str
     definitivo: bool
     resultado: Dict[str, Any]
+
+
+class CIFFormularioEscala(BaseModel):
+    valores_permitidos: list[Literal[0, 1, 2, 3, 4]]
+    permite_sem_resposta_no_rascunho: bool
+    obrigatoria_na_conclusao: bool
+
+
+class CIFFormularioCampo(BaseModel):
+    ordem: int
+    chave: str
+    codigo: str
+    codigo_original: str
+    descricao: str
+    area_codigo: str
+    area_descricao: str
+    capitulo_codigo: str
+    capitulo_descricao: str
+    obrigatorio_na_conclusao: bool
+
+
+class CIFFormularioResposta(BaseModel):
+    catalogo_versao: str
+    regras_versao: str
+    sexo: SexoCIF
+    total_campos: int
+    escala: CIFFormularioEscala
+    campos: list[CIFFormularioCampo]
