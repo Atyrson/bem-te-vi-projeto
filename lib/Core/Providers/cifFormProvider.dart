@@ -212,6 +212,14 @@ class CifFormProvider extends ChangeNotifier {
         );
         if (_initializationKey != key) return;
 
+        if (loadedAssessment.id != requestedAssessmentId ||
+            loadedAssessment.patientId != patientId) {
+          throw const CifApiException(
+            message:
+                'O paciente ou a avaliação retornados não correspondem ao contexto solicitado.',
+          );
+        }
+
         final localBeforeLoad = Map<String, dynamic>.from(_responses);
         final preserveLocal = changedSex && _hasUnsavedChanges;
         _applyAssessment(

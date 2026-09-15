@@ -55,6 +55,41 @@ class CifService implements CifServiceBase {
     return CifForm.fromJson(response);
   }
 
+  Future<List<CifAssessmentHistoryEntry>> listarHistorico({
+    required int patientId,
+  }) async {
+    final decoded = await _getJson(
+      ApiConfig.endpoint('patients/$patientId/cif-avaliacoes'),
+    );
+    final rawItems = decoded is List
+        ? decoded
+        : decoded is Map
+        ? (decoded['avaliacoes'] ??
+              decoded['assessments'] ??
+              decoded['historico'] ??
+              decoded['data'] ??
+              decoded['items'] ??
+              const [])
+        : const [];
+    if (rawItems is! List) {
+      throw const CifApiException(
+        message: 'A resposta do histórico CIF está em formato inválido.',
+      );
+    }
+    return rawItems
+        .whereType<Map>()
+        .map(
+          (item) => CifAssessmentHistoryEntry.fromJson(
+            Map<String, dynamic>.from(item),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<List<CifAssessmentHistoryEntry>> listarAvaliacoes({
+    required int patientId,
+  }) => listarHistorico(patientId: patientId);
+
   @override
   Future<CifAssessment> criarRascunho({
     required int patientId,
@@ -192,9 +227,19 @@ class CifService implements CifServiceBase {
   );
 
   Future<Map<String, dynamic>> _get(Uri url) async {
+    final decoded = await _getJson(url);
+    if (decoded is! Map) {
+      throw const CifApiException(
+        message: 'A resposta do servidor da CIF está em formato inválido.',
+      );
+    }
+    return Map<String, dynamic>.from(decoded);
+  }
+
+  Future<dynamic> _getJson(Uri url) async {
     try {
       final response = await _client.get(url, headers: _headers);
-      return _decodeResponse(response, expectedStatusCodes: {200});
+      return _decodeJsonResponse(response, expectedStatusCodes: {200});
     } on CifApiException {
       rethrow;
     } catch (error) {
@@ -216,10 +261,16 @@ class CifService implements CifServiceBase {
       final response = method == 'PATCH'
           ? await _client.patch(url, headers: _headers, body: encodedBody)
           : await _client.post(url, headers: _headers, body: encodedBody);
-      return _decodeResponse(
+      final decoded = _decodeJsonResponse(
         response,
         expectedStatusCodes: expectedStatusCodes,
       );
+      if (decoded is! Map) {
+        throw const CifApiException(
+          message: 'A resposta do servidor da CIF está em formato inválido.',
+        );
+      }
+      return Map<String, dynamic>.from(decoded);
     } on CifApiException {
       rethrow;
     } catch (error) {
@@ -230,7 +281,7 @@ class CifService implements CifServiceBase {
     }
   }
 
-  Map<String, dynamic> _decodeResponse(
+  dynamic _decodeJsonResponse(
     http.Response response, {
     required Set<int> expectedStatusCodes,
   }) {
@@ -238,12 +289,7 @@ class CifService implements CifServiceBase {
     if (!expectedStatusCodes.contains(response.statusCode)) {
       throw _apiException(response.statusCode, decoded);
     }
-    if (decoded is! Map) {
-      throw const CifApiException(
-        message: 'A resposta do servidor da CIF está em formato inválido.',
-      );
-    }
-    return Map<String, dynamic>.from(decoded);
+    return decoded;
   }
 
   CifApiException _apiException(int statusCode, dynamic decoded) {
@@ -293,6 +339,31 @@ class CifService implements CifServiceBase {
 
 typedef CIFService = CifService;
 typedef CIFServiceBase = CifServiceBase;
+
+/// Capacidade opcional do serviço, mantida fora de [CifServiceBase] para que
+/// fakes e integrações antigas do formulário continuem válidos.
+extension CifHistoryService on CifServiceBase {
+  Future<List<CifAssessmentHistoryEntry>> listarHistorico({
+    required int patientId,
+  }) {
+    final dynamic implementation = this;
+    try {
+      return implementation.listarHistorico(patientId: patientId)
+          as Future<List<CifAssessmentHistoryEntry>>;
+    } on NoSuchMethodError {
+      try {
+        return implementation.listarAvaliacoes(patientId: patientId)
+            as Future<List<CifAssessmentHistoryEntry>>;
+      } on NoSuchMethodError {
+        throw UnsupportedError('Histórico CIF não implementado neste serviço.');
+      }
+    }
+  }
+
+  Future<List<CifAssessmentHistoryEntry>> listarAvaliacoes({
+    required int patientId,
+  }) => listarHistorico(patientId: patientId);
+}
 
 /// A consulta do quadro resumo usa o mesmo recurso de avaliação já existente.
 /// O alias evita criar uma segunda rota HTTP ou um contrato de entrada novo.

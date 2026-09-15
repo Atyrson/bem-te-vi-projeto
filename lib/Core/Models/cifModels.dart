@@ -328,6 +328,157 @@ class CifAssessment {
   bool get isCompleted => status == 'concluida';
 }
 
+/// Item leve devolvido pela consulta do histórico de avaliações.
+///
+/// O histórico não depende das respostas nem dos resultados completos. Datas
+/// são opcionais para que um registro antigo ou malformado não derrube a
+/// listagem. A referência de reavaliação só é derivada quando o backend
+/// identifica explicitamente a avaliação como inicial; este cliente não
+/// escolhe uma avaliação inicial por posição ou por data.
+class CifAssessmentHistoryEntry {
+  final int id;
+  final int patientId;
+  final DateTime? assessmentDate;
+  final String status;
+  final String catalogVersion;
+  final String rulesVersion;
+  final bool completed;
+  final bool resultsAvailable;
+  final bool? isInitial;
+  final DateTime? reassessmentReferenceDate;
+
+  const CifAssessmentHistoryEntry({
+    required this.id,
+    required this.patientId,
+    required this.assessmentDate,
+    required this.status,
+    required this.catalogVersion,
+    required this.rulesVersion,
+    required this.completed,
+    required this.resultsAvailable,
+    required this.isInitial,
+    required this.reassessmentReferenceDate,
+  });
+
+  factory CifAssessmentHistoryEntry.fromJson(Map<String, dynamic> json) {
+    final rawCompletedAt =
+        json['concluido_em'] ?? json['completed_at'] ?? json['completedAt'];
+    final completedAt = _readDateTime(rawCompletedAt);
+    final status = _readString(json['status']);
+    final explicitCompleted = _readNullableBool(
+      json['concluida'] ??
+          json['completed'] ??
+          json['is_completed'] ??
+          json['isCompleted'],
+    );
+    final completed =
+        explicitCompleted ??
+        (completedAt != null || _isCompletedStatus(status));
+    final rawResults =
+        json['resultados'] ?? json['results'] ?? json['resultado'];
+    final explicitResultsAvailable = _readNullableBool(
+      json['resultados_disponiveis'] ??
+          json['results_available'] ??
+          json['has_results'] ??
+          json['hasResults'],
+    );
+    final resultsAvailable = explicitResultsAvailable ?? rawResults != null;
+    final assessmentDate = _readDate(
+      json['data_avaliacao'] ?? json['assessment_date'] ?? json['date'],
+    );
+    final isInitial = _readNullableBool(
+      json['avaliacao_inicial'] ??
+          json['is_initial'] ??
+          json['initial'] ??
+          json['isInitial'],
+    );
+    final explicitReference = _readDate(
+      json['data_reavaliacao_referencia'] ??
+          json['data_reavaliacao'] ??
+          json['reassessment_reference_date'] ??
+          json['reassessment_date'] ??
+          json['reassessment_reference'] ??
+          json['reassessmentReferenceDate'],
+    );
+
+    return CifAssessmentHistoryEntry(
+      id:
+          _readInt(
+            json['id'] ?? json['avaliacao_id'] ?? json['assessment_id'],
+          ) ??
+          0,
+      patientId:
+          _readInt(
+            json['paciente_id'] ??
+                json['patient_id'] ??
+                (json['patient'] is Map
+                    ? (json['patient'] as Map)['id']
+                    : json['patient']),
+          ) ??
+          0,
+      assessmentDate: assessmentDate,
+      status: status,
+      catalogVersion: _readString(
+        json['catalogo_versao'] ?? json['catalog_version'],
+      ),
+      rulesVersion: _readString(json['regras_versao'] ?? json['rules_version']),
+      completed: completed,
+      resultsAvailable: resultsAvailable,
+      isInitial: isInitial,
+      reassessmentReferenceDate:
+          explicitReference ??
+          (isInitial == true && assessmentDate != null
+              ? _addCalendarMonths(assessmentDate, 3)
+              : null),
+    );
+  }
+
+  factory CifAssessmentHistoryEntry.fromAssessment(CifAssessment assessment) {
+    return CifAssessmentHistoryEntry(
+      id: assessment.id,
+      patientId: assessment.patientId,
+      assessmentDate: assessment.assessmentDate,
+      status: assessment.status,
+      catalogVersion: assessment.catalogVersion,
+      rulesVersion: assessment.rulesVersion,
+      completed: assessment.isCompleted,
+      resultsAvailable: assessment.results != null,
+      isInitial: null,
+      reassessmentReferenceDate: null,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'paciente_id': patientId,
+    'data_avaliacao': assessmentDate == null
+        ? null
+        : _dateOnly(assessmentDate!),
+    'status': status,
+    'catalogo_versao': catalogVersion,
+    'regras_versao': rulesVersion,
+    'concluida': completed,
+    'resultados_disponiveis': resultsAvailable,
+    if (isInitial != null) 'avaliacao_inicial': isInitial,
+    if (reassessmentReferenceDate != null)
+      'data_reavaliacao_referencia': _dateOnly(reassessmentReferenceDate!),
+  };
+
+  bool get isDraft => !completed;
+  bool get isCompleted => completed;
+  int get avaliacaoId => id;
+  int get pacienteId => patientId;
+  DateTime? get dataAvaliacao => assessmentDate;
+  String get catalogoVersao => catalogVersion;
+  String get regrasVersao => rulesVersion;
+  bool get resultadosDisponiveis => resultsAvailable;
+  DateTime? get dataReferenciaReavaliacao => reassessmentReferenceDate;
+}
+
+typedef CifHistoryEntry = CifAssessmentHistoryEntry;
+typedef CifEvaluationHistoryEntry = CifAssessmentHistoryEntry;
+typedef CIFEntradaHistorico = CifAssessmentHistoryEntry;
+
 class CifValidationIssue {
   final String code;
   final String message;
@@ -745,6 +896,259 @@ class CifSummary {
   double? get resultadoGeral => generalResult;
 }
 
+/// Comparação de um capítulo sem transformar valores em interpretação clínica.
+///
+/// [difference] é sempre ``segunda avaliação - primeira avaliação``. Quando
+/// um valor está ausente, nulo ou marcado como pendente, a diferença também é
+/// nula; zero continua sendo um valor válido.
+class CifComparisonChapter {
+  final String code;
+  final double? firstValue;
+  final double? secondValue;
+  final double? difference;
+  final bool firstPending;
+  final bool secondPending;
+  final bool firstMissing;
+  final bool secondMissing;
+
+  const CifComparisonChapter({
+    required this.code,
+    required this.firstValue,
+    required this.secondValue,
+    required this.difference,
+    required this.firstPending,
+    required this.secondPending,
+    required this.firstMissing,
+    required this.secondMissing,
+  });
+
+  bool get hasPendingOrMissing =>
+      firstPending || secondPending || firstMissing || secondMissing;
+  String get codigo => code;
+  double? get valorPrimeira => firstValue;
+  double? get valorSegunda => secondValue;
+  double? get diferenca => difference;
+}
+
+/// Comparação de uma área correspondente entre duas avaliações.
+class CifComparisonArea {
+  final String code;
+  final String name;
+  final double? firstValue;
+  final double? secondValue;
+  final double? difference;
+  final bool firstPending;
+  final bool secondPending;
+  final bool firstMissing;
+  final bool secondMissing;
+
+  const CifComparisonArea({
+    required this.code,
+    required this.name,
+    required this.firstValue,
+    required this.secondValue,
+    required this.difference,
+    required this.firstPending,
+    required this.secondPending,
+    required this.firstMissing,
+    required this.secondMissing,
+  });
+
+  bool get hasPendingOrMissing =>
+      firstPending || secondPending || firstMissing || secondMissing;
+  String get codigo => code;
+  String get nome => name;
+  double? get valorPrimeira => firstValue;
+  double? get valorSegunda => secondValue;
+  double? get diferenca => difference;
+}
+
+/// Resultado tipado da comparação entre dois resumos fornecidos pelo backend.
+///
+/// A união dos códigos apenas alinha itens já retornados nos dois resumos; o
+/// cliente não recalcula capítulos, áreas ou qualificadores.
+class CifComparisonResult {
+  final int patientId;
+  final int firstAssessmentId;
+  final int secondAssessmentId;
+  final DateTime? firstAssessmentDate;
+  final DateTime? secondAssessmentDate;
+  final String firstCatalogVersion;
+  final String secondCatalogVersion;
+  final String firstRulesVersion;
+  final String secondRulesVersion;
+  final bool patientCompatible;
+  final bool versionsCompatible;
+  final Map<String, CifComparisonChapter> chapters;
+  final Map<String, CifComparisonArea> areas;
+
+  const CifComparisonResult({
+    required this.patientId,
+    required this.firstAssessmentId,
+    required this.secondAssessmentId,
+    required this.firstAssessmentDate,
+    required this.secondAssessmentDate,
+    required this.firstCatalogVersion,
+    required this.secondCatalogVersion,
+    required this.firstRulesVersion,
+    required this.secondRulesVersion,
+    required this.patientCompatible,
+    required this.versionsCompatible,
+    required this.chapters,
+    required this.areas,
+  });
+
+  factory CifComparisonResult.fromSummaries(
+    CifSummary first,
+    CifSummary second,
+  ) {
+    final patientCompatible = first.patientId == second.patientId;
+    final versionsCompatible =
+        first.catalogVersion.isNotEmpty &&
+        second.catalogVersion.isNotEmpty &&
+        first.rulesVersion.isNotEmpty &&
+        second.rulesVersion.isNotEmpty &&
+        first.catalogVersion == second.catalogVersion &&
+        first.rulesVersion == second.rulesVersion;
+
+    final chapterCodes = <String>{
+      ...first.chapters.keys,
+      ...second.chapters.keys,
+    };
+    final chapters = <String, CifComparisonChapter>{};
+    for (final code in chapterCodes) {
+      final firstItem = first.chapters[code];
+      final secondItem = second.chapters[code];
+      chapters[code] = _buildChapterComparison(
+        code,
+        firstItem,
+        secondItem,
+        allowDifference: patientCompatible && versionsCompatible,
+      );
+    }
+
+    final areaCodes = <String>{...first.areas.keys, ...second.areas.keys};
+    final areas = <String, CifComparisonArea>{};
+    for (final code in areaCodes) {
+      final firstItem = first.areas[code];
+      final secondItem = second.areas[code];
+      final name = firstItem?.name.isNotEmpty == true
+          ? firstItem!.name
+          : secondItem?.name ?? '';
+      areas[code] = _buildAreaComparison(
+        code,
+        name,
+        firstItem,
+        secondItem,
+        allowDifference: patientCompatible && versionsCompatible,
+      );
+    }
+
+    return CifComparisonResult(
+      patientId: first.patientId,
+      firstAssessmentId: first.assessmentId,
+      secondAssessmentId: second.assessmentId,
+      firstAssessmentDate: first.assessmentDate,
+      secondAssessmentDate: second.assessmentDate,
+      firstCatalogVersion: first.catalogVersion,
+      secondCatalogVersion: second.catalogVersion,
+      firstRulesVersion: first.rulesVersion,
+      secondRulesVersion: second.rulesVersion,
+      patientCompatible: patientCompatible,
+      versionsCompatible: versionsCompatible,
+      chapters: Map.unmodifiable(chapters),
+      areas: Map.unmodifiable(areas),
+    );
+  }
+
+  bool get canCompare => patientCompatible && versionsCompatible;
+  bool get pacientesCompativeis => patientCompatible;
+  bool get versoesCompativeis => versionsCompatible;
+  Map<String, CifComparisonChapter> get capitulos => chapters;
+  Map<String, CifComparisonArea> get areasPorResultado => areas;
+  String get versionMismatchMessage {
+    final differences = <String>[];
+    if (firstCatalogVersion != secondCatalogVersion) {
+      differences.add('catálogo: $firstCatalogVersion × $secondCatalogVersion');
+    } else if (firstCatalogVersion.isEmpty) {
+      differences.add('catálogo não informado');
+    }
+    if (firstRulesVersion != secondRulesVersion) {
+      differences.add('regras: $firstRulesVersion × $secondRulesVersion');
+    } else if (firstRulesVersion.isEmpty) {
+      differences.add('regras não informadas');
+    }
+    return differences.join('; ');
+  }
+}
+
+typedef CifComparison = CifComparisonResult;
+typedef CifChapterComparison = CifComparisonChapter;
+typedef CifAreaComparison = CifComparisonArea;
+typedef CIFComparacao = CifComparisonResult;
+
+CifComparisonChapter _buildChapterComparison(
+  String code,
+  CifChapterResult? first,
+  CifChapterResult? second, {
+  required bool allowDifference,
+}) {
+  final firstMissing = first == null || first.value == null;
+  final secondMissing = second == null || second.value == null;
+  double? difference;
+  if (allowDifference &&
+      first != null &&
+      second != null &&
+      first.value != null &&
+      second.value != null &&
+      !first.pending &&
+      !second.pending) {
+    difference = second.value! - first.value!;
+  }
+  return CifComparisonChapter(
+    code: code,
+    firstValue: first?.value,
+    secondValue: second?.value,
+    difference: difference,
+    firstPending: first?.pending ?? false,
+    secondPending: second?.pending ?? false,
+    firstMissing: firstMissing,
+    secondMissing: secondMissing,
+  );
+}
+
+CifComparisonArea _buildAreaComparison(
+  String code,
+  String name,
+  CifAreaResult? first,
+  CifAreaResult? second, {
+  required bool allowDifference,
+}) {
+  final firstMissing = first == null || first.value == null;
+  final secondMissing = second == null || second.value == null;
+  double? difference;
+  if (allowDifference &&
+      first != null &&
+      second != null &&
+      first.value != null &&
+      second.value != null &&
+      !first.pending &&
+      !second.pending) {
+    difference = second.value! - first.value!;
+  }
+  return CifComparisonArea(
+    code: code,
+    name: name,
+    firstValue: first?.value,
+    secondValue: second?.value,
+    difference: difference,
+    firstPending: first?.pending ?? false,
+    secondPending: second?.pending ?? false,
+    firstMissing: firstMissing,
+    secondMissing: secondMissing,
+  );
+}
+
 class CifApiException implements Exception {
   final int? statusCode;
   final String message;
@@ -817,6 +1221,20 @@ bool _readBool(dynamic value) {
   return value?.toString().toLowerCase() == 'true';
 }
 
+bool? _readNullableBool(dynamic value) {
+  if (value == null) return null;
+  if (value is bool) return value;
+  if (value is num) return value != 0;
+  final normalized = value.toString().trim().toLowerCase();
+  if (normalized == 'true' || normalized == '1' || normalized == 'sim') {
+    return true;
+  }
+  if (normalized == 'false' || normalized == '0' || normalized == 'nao') {
+    return false;
+  }
+  return null;
+}
+
 List<int> _readIntList(dynamic value) {
   if (value is! List) return const [];
   return value.map(_readInt).whereType<int>().toList(growable: false);
@@ -841,6 +1259,28 @@ DateTime? _readDate(dynamic value) {
 DateTime? _readDateTime(dynamic value) {
   if (value == null || value.toString().isEmpty) return null;
   return DateTime.tryParse(value.toString());
+}
+
+bool _isCompletedStatus(String status) {
+  final normalized = status
+      .trim()
+      .toLowerCase()
+      .replaceAll('á', 'a')
+      .replaceAll('ã', 'a')
+      .replaceAll('é', 'e')
+      .replaceAll('í', 'i');
+  return normalized == 'concluida' ||
+      normalized == 'completa' ||
+      normalized == 'completed';
+}
+
+DateTime _addCalendarMonths(DateTime value, int months) {
+  final monthIndex = value.year * 12 + (value.month - 1) + months;
+  final year = monthIndex ~/ 12;
+  final month = monthIndex % 12 + 1;
+  final lastDay = DateTime(year, month + 1, 0).day;
+  final day = value.day > lastDay ? lastDay : value.day;
+  return DateTime(year, month, day);
 }
 
 String _dateOnly(DateTime value) =>

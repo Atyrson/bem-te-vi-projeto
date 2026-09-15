@@ -21,6 +21,13 @@ class RecordingClient extends http.BaseClient {
     if (request.method == 'GET' && path.endsWith('/cif/formulario')) {
       return _response(fakeForm('Feminino').toJson());
     }
+    if (request.method == 'GET' &&
+        path.endsWith('/patients/1/cif-avaliacoes')) {
+      return _response([
+        fakeAssessment(id: 9).toJson(),
+        fakeAssessment(id: 8, status: 'concluida').toJson(),
+      ]);
+    }
     if (request.method == 'GET') {
       return _response(fakeAssessment(id: 9).toJson());
     }
@@ -56,10 +63,7 @@ class RecordingClient extends http.BaseClient {
     );
   }
 
-  http.StreamedResponse _response(
-    Map<String, dynamic> body, {
-    int status = 200,
-  }) {
+  http.StreamedResponse _response(Object body, {int status = 200}) {
     return http.StreamedResponse(
       Stream<List<int>>.value(utf8.encode(jsonEncode(body))),
       status,
@@ -112,4 +116,20 @@ void main() {
       expect(client.requests[5].url.path, endsWith('/concluir'));
     },
   );
+
+  test('consulta o histórico como lista e preserva os dados tipados', () async {
+    final client = RecordingClient();
+    final service = CifService(client: client);
+
+    final entries = await service.listarHistorico(patientId: 1);
+
+    expect(entries, hasLength(2));
+    expect(entries.first.id, 9);
+    expect(entries.first.patientId, 1);
+    expect(entries.first.isDraft, isTrue);
+    expect(
+      client.requests.single.url.path,
+      endsWith('/patients/1/cif-avaliacoes'),
+    );
+  });
 }

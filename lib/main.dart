@@ -3,6 +3,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:projeto/Core/Constants/appStrings.dart';
 import 'package:projeto/Core/Providers/asiaFormProvider.dart';
 import 'package:projeto/Core/Providers/cifFormProvider.dart';
+import 'package:projeto/Core/Providers/cifHistoryProvider.dart';
+import 'package:projeto/Core/Providers/cifComparisonProvider.dart';
 import 'package:projeto/Core/Providers/eletroFormProvider.dart';
 import 'package:projeto/Core/Providers/meemFormProvider.dart';
 import 'package:projeto/Core/Providers/patientProvider.dart';
@@ -10,6 +12,8 @@ import 'package:projeto/Presentation/Screens/ananmeseForm.dart';
 import 'package:projeto/Presentation/Screens/asiaForm.dart';
 import 'package:projeto/Presentation/Screens/cadastro.dart';
 import 'package:projeto/Presentation/Screens/cifForm.dart';
+import 'package:projeto/Presentation/Screens/cifHistory.dart';
+import 'package:projeto/Presentation/Screens/cifComparison.dart';
 import 'package:projeto/Presentation/Screens/cifSummary.dart';
 import 'package:projeto/Presentation/Screens/dex.dart';
 import 'package:projeto/Presentation/Screens/eletroForm.dart';
@@ -35,6 +39,8 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (context) => PatientProvider()),
         ChangeNotifierProvider(create: (context) => AsiaFormProvider()),
         ChangeNotifierProvider(create: (context) => CifFormProvider()),
+        ChangeNotifierProvider(create: (context) => CifHistoryProvider()),
+        ChangeNotifierProvider(create: (context) => CifComparisonProvider()),
         ChangeNotifierProvider(create: (context) => MeemFormProvider()),
         ChangeNotifierProvider(create: (context) => MeemFormProvider()),
         ChangeNotifierProvider(
@@ -128,6 +134,26 @@ class MyApp extends StatelessWidget {
                 ? arguments['assessment_id'] as int
                 : null;
             return CifSummaryScreen(assessmentId: assessmentId);
+          },
+          '/cif_history': (context) => const CifHistoryScreen(),
+          '/cif_comparison': (context) {
+            final arguments = ModalRoute.of(context)?.settings.arguments;
+            final firstAssessmentId =
+                arguments is Map && arguments['firstAssessmentId'] is int
+                ? arguments['firstAssessmentId'] as int
+                : arguments is Map && arguments['first_assessment_id'] is int
+                ? arguments['first_assessment_id'] as int
+                : null;
+            final secondAssessmentId =
+                arguments is Map && arguments['secondAssessmentId'] is int
+                ? arguments['secondAssessmentId'] as int
+                : arguments is Map && arguments['second_assessment_id'] is int
+                ? arguments['second_assessment_id'] as int
+                : null;
+            return CifComparisonScreen(
+              firstAssessmentId: firstAssessmentId,
+              secondAssessmentId: secondAssessmentId,
+            );
           },
           '/gas_form': (context) => const GasForm(),
           '/anmenese_form': (context) => const AnmeneseForm(),

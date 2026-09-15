@@ -81,8 +81,12 @@ class FakeCifService implements CifServiceBase {
   bool failPreview = false;
   bool failConclusion = false;
   bool failConsult = false;
+  bool failHistory = false;
+  int historyCalls = 0;
   Duration previewDelay = Duration.zero;
   final List<Map<String, dynamic>> updatePatches = [];
+  List<CifAssessmentHistoryEntry> historyEntries = const [];
+  final Map<int, CifAssessment> assessmentsToConsult = {};
   CifAssessment assessmentToConsult = fakeAssessment(
     id: 7,
     responses: {'f:E1': 0},
@@ -95,6 +99,18 @@ class FakeCifService implements CifServiceBase {
     if (failForm) throw const CifNetworkException('falha de formulário');
     return fakeForm(sexo);
   }
+
+  Future<List<CifAssessmentHistoryEntry>> listarHistorico({
+    required int patientId,
+  }) async {
+    historyCalls++;
+    if (failHistory) throw const CifNetworkException('falha no histórico');
+    return historyEntries;
+  }
+
+  Future<List<CifAssessmentHistoryEntry>> listarAvaliacoes({
+    required int patientId,
+  }) => listarHistorico(patientId: patientId);
 
   @override
   Future<CifAssessment> criarRascunho({
@@ -120,7 +136,7 @@ class FakeCifService implements CifServiceBase {
   }) async {
     consultCalls++;
     if (failConsult) throw const CifNetworkException('falha ao consultar');
-    return assessmentToConsult;
+    return assessmentsToConsult[assessmentId] ?? assessmentToConsult;
   }
 
   @override

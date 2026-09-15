@@ -75,6 +75,16 @@ class _CifFormScreenState extends State<CifFormScreen> {
               }
             },
           ),
+          actions: [
+            IconButton(
+              key: const ValueKey('cif-form-history-action'),
+              tooltip: 'Histórico CIF',
+              onPressed: patient.id == null
+                  ? null
+                  : () => Navigator.of(context).pushNamed('/cif_history'),
+              icon: const Icon(Icons.history_outlined),
+            ),
+          ],
         ),
         body: _buildBody(patient, provider),
         bottomNavigationBar: _shouldShowForm(patient, provider)
@@ -102,6 +112,9 @@ class _CifFormScreenState extends State<CifFormScreen> {
     }
     if (provider.form == null) {
       return _errorState(provider);
+    }
+    if (provider.isCompleted) {
+      return _completedState(provider);
     }
 
     _syncExpansion(provider.form!);
@@ -516,6 +529,36 @@ class _CifFormScreenState extends State<CifFormScreen> {
               onPressed: provider.isLoading ? null : _initializeForPatient,
               icon: const Icon(Icons.refresh),
               label: const Text('Tentar novamente'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _completedState(CifFormProvider provider) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.fact_check_outlined, size: 48),
+            const SizedBox(height: 12),
+            const Text(
+              'Esta avaliação está concluída e não pode ser editada. Abra o resumo para consultar os valores e as respostas originais.',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: provider.assessmentId == null
+                  ? null
+                  : () => Navigator.of(context).pushNamed(
+                      '/cif_summary',
+                      arguments: {'assessmentId': provider.assessmentId},
+                    ),
+              icon: const Icon(Icons.table_view_outlined),
+              label: const Text('Ver quadro resumo'),
             ),
           ],
         ),

@@ -63,6 +63,16 @@ class _CifSummaryScreenState extends State<CifSummaryScreen> {
           tooltip: 'Voltar',
           onPressed: () => Navigator.of(context).pop(),
         ),
+        actions: [
+          IconButton(
+            key: const ValueKey('cif-summary-history-action'),
+            tooltip: 'Histórico CIF',
+            onPressed: patient.id == null
+                ? null
+                : () => Navigator.of(context).pushNamed('/cif_history'),
+            icon: const Icon(Icons.history_outlined),
+          ),
+        ],
       ),
       body: _buildBody(patient, provider),
     );
