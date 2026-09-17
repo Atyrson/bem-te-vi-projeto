@@ -86,6 +86,7 @@ class FakeCifService implements CifServiceBase {
   Duration previewDelay = Duration.zero;
   Duration updateDelay = Duration.zero;
   Duration conclusionDelay = Duration.zero;
+  CifPreview? previewResponse;
   final List<Map<String, dynamic>> updatePatches = [];
   List<CifAssessmentHistoryEntry> historyEntries = const [];
   final Map<int, CifAssessment> assessmentsToConsult = {};
@@ -177,6 +178,7 @@ class FakeCifService implements CifServiceBase {
     previewCalls++;
     if (previewDelay != Duration.zero) await Future<void>.delayed(previewDelay);
     if (failPreview) throw const CifNetworkException('falha na prévia');
+    if (previewResponse != null) return previewResponse!;
     final result = CifPreviewResult(
       status: 'pendente',
       definitive: false,

@@ -122,6 +122,8 @@ class _CifFormScreenState extends State<CifFormScreen> {
 
     _syncExpansion(provider.form!);
     final items = _visibleItems(provider.form!);
+    final hasPreview =
+        provider.preview != null || provider.validationResult != null;
     return Column(
       children: [
         _buildPatientHeader(patient, provider),
@@ -129,14 +131,18 @@ class _CifFormScreenState extends State<CifFormScreen> {
         if (provider.hasIncompatibleResponses)
           _buildIncompatibleBanner(provider),
         _buildProgress(provider),
-        if (provider.preview != null || provider.validationResult != null)
-          _buildPreviewBanner(provider),
         Expanded(
           child: ListView.builder(
             key: ValueKey('cif-visible-list-${provider.form!.sex}'),
             padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
-            itemCount: items.length,
-            itemBuilder: (context, index) => _buildItem(items[index], provider),
+            itemCount: items.length + (hasPreview ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (hasPreview && index == 0) {
+                return _buildPreviewBanner(provider);
+              }
+              final itemIndex = hasPreview ? index - 1 : index;
+              return _buildItem(items[itemIndex], provider);
+            },
           ),
         ),
       ],
@@ -277,6 +283,7 @@ class _CifFormScreenState extends State<CifFormScreen> {
 
   Widget _buildPreviewBanner(CifFormProvider provider) {
     final preview = provider.preview;
+    final result = preview?.result ?? provider.validationResult;
     final issues = provider.pendingIssues;
     final grouped = <String, int>{};
     for (final issue in issues) {
@@ -290,39 +297,199 @@ class _CifFormScreenState extends State<CifFormScreen> {
           : '${field.chapterCode} — ${field.chapterDescription}';
       grouped[label] = (grouped[label] ?? 0) + 1;
     }
-    return Container(
-      width: double.infinity,
+    final areas = result?.areas.values.toList(growable: false) ?? const [];
+    final definitive = preview?.definitive ?? result?.definitive ?? false;
+
+    return Card(
+      key: const ValueKey('cif-preview-results'),
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: preview?.definitive == true
-            ? Colors.green.shade50
-            : Colors.blue.shade50,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            preview?.definitive == true
-                ? 'Prévia completa pelo backend.'
-                : 'Prévia parcial pelo backend; não é resultado definitivo.',
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-          if (grouped.isNotEmpty) ...[
-            const SizedBox(height: 5),
-            const Text('Pendências por capítulo:'),
-            ...grouped.entries.map(
-              (entry) => Text('• ${entry.key}: ${entry.value}'),
-            ),
-          ],
-          if (provider.errors.isNotEmpty)
+      color: definitive ? Colors.green.shade50 : Colors.blue.shade50,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Text(
-              'Erros: ${provider.errors.map((issue) => issue.message).join(' ')}',
+              definitive
+                  ? 'Prévia completa pelo backend.'
+                  : 'Prévia parcial pelo backend; não é resultado definitivo.',
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
+            const SizedBox(height: 4),
+            const Text(
+              'Valores calculados a partir das respostas preenchidas. '
+              'Códigos pendentes ainda dependem de respostas.',
+            ),
+            if (areas.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              const Text(
+                'Resultados calculados',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              ...areas.map(
+                (area) => _buildPreviewArea(area, result!, provider),
+              ),
+            ] else
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text(
+                  'Nenhum resultado calculado retornado pelo backend.',
+                ),
+              ),
+            if (grouped.isNotEmpty)
+              ExpansionTile(
+                key: const ValueKey('cif-preview-pending-issues'),
+                tilePadding: EdgeInsets.zero,
+                childrenPadding: const EdgeInsets.only(left: 12, bottom: 8),
+                title: Text('Pendências (${issues.length})'),
+                children: grouped.entries
+                    .map(
+                      (entry) => Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text('${entry.key}: ${entry.value}'),
+                      ),
+                    )
+                    .toList(growable: false),
+              ),
+            if (provider.errors.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6, bottom: 4),
+                child: Text(
+                  'Erros: ${provider.errors.map((issue) => issue.message).join(' ')}',
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPreviewArea(
+    CifPartialResult area,
+    CifPreviewResult result,
+    CifFormProvider provider,
+  ) {
+    final areaCode = area.area.isNotEmpty ? area.area : area.code;
+    final chapterResults = result.chapters.values
+        .where((chapter) => chapter.area == areaCode)
+        .toList(growable: false);
+    final calculatedItems = result.intermediates.values
+        .where((item) => item.area == areaCode)
+        .toList(growable: false);
+    final chapterCodes = chapterResults.map((chapter) => chapter.code).toSet();
+    final standalone = calculatedItems
+        .where(
+          (item) =>
+              item.code != areaCode &&
+              !chapterCodes.contains(item.code) &&
+              !chapterResults.any(
+                (chapter) => item.code.startsWith(chapter.code),
+              ),
+        )
+        .toList(growable: false);
+    final sortedStandalone = standalone.toList(growable: false)
+      ..sort(_compareCalculatedItems);
+
+    return Card(
+      key: ValueKey('cif-preview-area-$areaCode'),
+      margin: const EdgeInsets.only(top: 6),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            key: ValueKey('cif-preview-area-heading-$areaCode'),
+            title: Text(
+              '${areaCode.toUpperCase()} — ${area.name?.isNotEmpty == true ? area.name : areaCode}',
+            ),
+            trailing: _previewValue(area.value, area.pending),
+          ),
+          ...chapterResults.map((chapter) {
+            final nested =
+                calculatedItems
+                    .where(
+                      (item) =>
+                          item.code != chapter.code &&
+                          item.code.startsWith(chapter.code),
+                    )
+                    .toList(growable: false)
+                  ..sort(_compareCalculatedItems);
+            final description = provider.fields
+                .where((field) => field.chapterCode == chapter.code)
+                .firstOrNull
+                ?.chapterDescription;
+            final chapterTitle = description?.isNotEmpty == true
+                ? '${chapter.code} — $description'
+                : chapter.code;
+
+            if (nested.isEmpty) {
+              return ListTile(
+                key: ValueKey('cif-preview-chapter-$areaCode-${chapter.code}'),
+                dense: true,
+                contentPadding: const EdgeInsets.only(left: 16, right: 16),
+                title: Text(chapterTitle),
+                trailing: _previewValue(chapter.value, chapter.pending),
+              );
+            }
+            return ExpansionTile(
+              key: ValueKey('cif-preview-chapter-$areaCode-${chapter.code}'),
+              tilePadding: const EdgeInsets.only(left: 16, right: 16),
+              childrenPadding: const EdgeInsets.only(left: 12),
+              title: Text(chapterTitle),
+              trailing: _previewExpansionTrailing(
+                chapter.value,
+                chapter.pending,
+              ),
+              children: nested.map(_buildPreviewCalculatedItem).toList(),
+            );
+          }),
+          if (sortedStandalone.isNotEmpty) ...[
+            const Divider(height: 1),
+            const ListTile(
+              dense: true,
+              title: Text('Outros códigos calculados'),
+            ),
+            ...sortedStandalone.map(_buildPreviewCalculatedItem),
+          ],
         ],
       ),
     );
+  }
+
+  Widget _previewExpansionTrailing(double? value, bool pending) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _previewValue(value, pending),
+        const SizedBox(width: 4),
+        const Icon(Icons.expand_more),
+      ],
+    );
+  }
+
+  Widget _buildPreviewCalculatedItem(CifPartialResult item) {
+    return ListTile(
+      key: ValueKey('cif-preview-result-${item.field}'),
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      title: Text(item.code),
+      subtitle: item.field.isEmpty ? null : Text('Origem: ${item.field}'),
+      trailing: _previewValue(item.value, item.pending),
+    );
+  }
+
+  Widget _previewValue(double? value, bool pending) {
+    return Text(
+      pending || value == null ? 'Pendente' : value.toStringAsFixed(2),
+      style: TextStyle(
+        fontWeight: FontWeight.w600,
+        color: pending || value == null ? Colors.orange.shade900 : null,
+      ),
+    );
+  }
+
+  int _compareCalculatedItems(CifPartialResult first, CifPartialResult second) {
+    final codeOrder = first.code.compareTo(second.code);
+    return codeOrder != 0 ? codeOrder : first.field.compareTo(second.field);
   }
 
   Widget _buildActions(CifFormProvider provider) {
