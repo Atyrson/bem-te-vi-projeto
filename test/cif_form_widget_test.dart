@@ -142,6 +142,113 @@ void main() {
     cifProvider.dispose();
     patientProvider.dispose();
   });
+
+  testWidgets('salva o rascunho antes de sair da avaliação', (tester) async {
+    final service = FakeCifService();
+    final cifProvider = CifFormProvider(service: service);
+    final patientProvider = PatientProvider()
+      ..setPatient({
+        'id': 1,
+        'nome_completo': 'Paciente Teste',
+        'sexo': 'Feminino',
+      });
+    addTearDown(cifProvider.dispose);
+    addTearDown(patientProvider.dispose);
+
+    await _openExitDialog(tester, cifProvider, patientProvider);
+    expect(find.text('Continuar preenchendo'), findsOneWidget);
+    expect(find.text('Sair'), findsOneWidget);
+    await tester.tap(find.text('Salvar rascunho e sair'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Abrir CIF'), findsOneWidget);
+    expect(service.createCalls, 1);
+    expect(cifProvider.assessmentId, isNotNull);
+    expect(cifProvider.hasUnsavedChanges, isFalse);
+  });
+
+  testWidgets('falha ao salvar mantém a avaliação aberta', (tester) async {
+    final service = FakeCifService()..failSave = true;
+    final cifProvider = CifFormProvider(service: service);
+    final patientProvider = PatientProvider()
+      ..setPatient({
+        'id': 1,
+        'nome_completo': 'Paciente Teste',
+        'sexo': 'Feminino',
+      });
+    addTearDown(cifProvider.dispose);
+    addTearDown(patientProvider.dispose);
+
+    await _openExitDialog(tester, cifProvider, patientProvider);
+    await tester.tap(find.text('Salvar rascunho e sair'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CifFormScreen), findsOneWidget);
+    expect(cifProvider.answerFor('f:E1'), 0);
+    expect(cifProvider.hasUnsavedChanges, isTrue);
+    expect(service.createCalls, 1);
+  });
+
+  testWidgets('continuar e sair preservam as opções existentes', (
+    tester,
+  ) async {
+    final service = FakeCifService();
+    final cifProvider = CifFormProvider(service: service);
+    final patientProvider = PatientProvider()
+      ..setPatient({
+        'id': 1,
+        'nome_completo': 'Paciente Teste',
+        'sexo': 'Feminino',
+      });
+    addTearDown(cifProvider.dispose);
+    addTearDown(patientProvider.dispose);
+
+    await _openExitDialog(tester, cifProvider, patientProvider);
+    await tester.tap(find.text('Continuar preenchendo'));
+    await tester.pumpAndSettle();
+    expect(find.byType(CifFormScreen), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Voltar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sair'));
+    await tester.pumpAndSettle();
+    expect(find.text('Abrir CIF'), findsOneWidget);
+    expect(service.createCalls, 0);
+  });
+}
+
+Future<void> _openExitDialog(
+  WidgetTester tester,
+  CifFormProvider cifProvider,
+  PatientProvider patientProvider,
+) async {
+  await tester.pumpWidget(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: patientProvider),
+        ChangeNotifierProvider.value(value: cifProvider),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => ElevatedButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const CifFormScreen()),
+              ),
+              child: const Text('Abrir CIF'),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.tap(find.text('Abrir CIF'));
+  await tester.pumpAndSettle();
+  cifProvider.setAnswer('f:E1', 0);
+  await tester.pump();
+  await tester.tap(find.byTooltip('Voltar'));
+  await tester.pumpAndSettle();
+  expect(find.text('Alterações não salvas'), findsOneWidget);
 }
 
 CifPreview _partialPreview() {

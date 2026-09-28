@@ -7,6 +7,8 @@ import 'package:projeto/Core/Providers/cifFormProvider.dart';
 import 'package:projeto/Core/Providers/patientProvider.dart';
 import 'package:projeto/Presentation/Widgets/cifFieldInput.dart';
 
+enum _CifExitAction { continueEditing, discard, saveDraft }
+
 class CifFormScreen extends StatefulWidget {
   final int? assessmentId;
 
@@ -21,6 +23,7 @@ class _CifFormScreenState extends State<CifFormScreen> {
   final DateFormat _dateFormat = DateFormat('dd/MM/yyyy');
   String? _contextKey;
   String? _formKey;
+  bool _savingOnExit = false;
   final Set<String> _expandedAreas = {};
   final Set<String> _expandedChapters = {};
 
@@ -69,10 +72,8 @@ class _CifFormScreenState extends State<CifFormScreen> {
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             tooltip: 'Voltar',
-            onPressed: () async {
-              if (await _confirmExit() && context.mounted) {
-                Navigator.of(context).pop();
-              }
+            onPressed: () {
+              Navigator.of(context).maybePop();
             },
           ),
           actions: [
@@ -797,26 +798,54 @@ class _CifFormScreenState extends State<CifFormScreen> {
   }
 
   Future<bool> _confirmExit() async {
+    if (_savingOnExit) return false;
     final provider = context.read<CifFormProvider>();
     if (!provider.hasUnsavedChanges) return true;
-    final leave = await showDialog<bool>(
+    final action = await showDialog<_CifExitAction>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Alterações não salvas'),
-        content: const Text('Deseja sair e perder as alterações locais?'),
+        content: const Text(
+          'Você pode salvar o rascunho antes de sair ou descartar as alterações locais.',
+        ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () =>
+                Navigator.pop(context, _CifExitAction.continueEditing),
             child: const Text('Continuar preenchendo'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(context, _CifExitAction.discard),
             child: const Text('Sair'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, _CifExitAction.saveDraft),
+            child: const Text('Salvar rascunho e sair'),
           ),
         ],
       ),
     );
-    return leave ?? false;
+    if (!mounted) return false;
+    if (action == _CifExitAction.discard) return true;
+    if (action != _CifExitAction.saveDraft) return false;
+
+    _savingOnExit = true;
+    try {
+      final saved = await provider.saveDraft();
+      if (!mounted) return false;
+      if (saved != null && !provider.hasUnsavedChanges) return true;
+    } catch (_) {
+      // O provider mantém as respostas locais e expõe a mensagem de erro.
+    } finally {
+      _savingOnExit = false;
+    }
+    if (mounted) {
+      _showMessage(
+        provider.errorMessage ??
+            'Não foi possível salvar o rascunho. Tente novamente.',
+      );
+    }
+    return false;
   }
 
   void _showMessage(String message) {
