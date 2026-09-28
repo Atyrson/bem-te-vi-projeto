@@ -4,12 +4,46 @@ import 'package:provider/provider.dart';
 
 import 'package:projeto/Core/Models/cifModels.dart';
 import 'package:projeto/Core/Providers/cifFormProvider.dart';
+import 'package:projeto/Core/Providers/cifHistoryProvider.dart';
 import 'package:projeto/Core/Providers/patientProvider.dart';
 import 'package:projeto/Presentation/Screens/cifForm.dart';
 
 import 'cif_test_support.dart';
 
 void main() {
+  testWidgets('formulário mostra o número da avaliação do paciente', (
+    tester,
+  ) async {
+    final service = FakeCifService()
+      ..assessmentToConsult = fakeAssessment(id: 12)
+      ..historyEntries = [
+        CifAssessmentHistoryEntry.fromAssessment(fakeAssessment(id: 12)),
+        CifAssessmentHistoryEntry.fromAssessment(fakeAssessment(id: 7)),
+      ];
+    final cifProvider = CifFormProvider(service: service);
+    final historyProvider = CifHistoryProvider(service: service);
+    final patientProvider = PatientProvider()
+      ..setPatient({'id': 1, 'nome_completo': 'Paciente', 'sexo': 'Feminino'});
+    addTearDown(cifProvider.dispose);
+    addTearDown(historyProvider.dispose);
+    addTearDown(patientProvider.dispose);
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: patientProvider),
+          ChangeNotifierProvider.value(value: cifProvider),
+          ChangeNotifierProvider.value(value: historyProvider),
+        ],
+        child: const MaterialApp(home: CifFormScreen(assessmentId: 12)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Rascunho #2'), findsOneWidget);
+    expect(find.text('Rascunho #12'), findsNothing);
+  });
+
   testWidgets('exibe código e descrição e permite selecionar zero', (
     tester,
   ) async {

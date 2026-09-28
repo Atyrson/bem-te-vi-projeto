@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import 'package:projeto/Core/Models/cifModels.dart';
 import 'package:projeto/Core/Providers/cifFormProvider.dart';
+import 'package:projeto/Core/Providers/cifHistoryProvider.dart';
 import 'package:projeto/Core/Providers/patientProvider.dart';
 import 'package:projeto/Presentation/Screens/cifSummary.dart';
 
@@ -174,8 +175,13 @@ void main() {
     'exibe áreas, capítulos, pendências e respostas somente leitura',
     (tester) async {
       final service = FakeCifService()
-        ..assessmentToConsult = completedAssessment();
+        ..assessmentToConsult = completedAssessment()
+        ..historyEntries = [
+          CifAssessmentHistoryEntry.fromAssessment(fakeAssessment(id: 7)),
+          CifAssessmentHistoryEntry.fromAssessment(fakeAssessment(id: 3)),
+        ];
       final cifProvider = CifFormProvider(service: service);
+      final historyProvider = CifHistoryProvider(service: service);
       final patientProvider = PatientProvider()
         ..setPatient({
           'id': 1,
@@ -184,6 +190,7 @@ void main() {
           'sexo': 'Feminino',
         });
       addTearDown(cifProvider.dispose);
+      addTearDown(historyProvider.dispose);
       addTearDown(patientProvider.dispose);
 
       await tester.pumpWidget(
@@ -191,6 +198,7 @@ void main() {
           providers: [
             ChangeNotifierProvider.value(value: patientProvider),
             ChangeNotifierProvider.value(value: cifProvider),
+            ChangeNotifierProvider.value(value: historyProvider),
           ],
           child: const MaterialApp(home: CifSummaryScreen(assessmentId: 7)),
         ),
@@ -198,6 +206,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Maria da Silva'), findsOneWidget);
+      expect(find.text('Número da avaliação:'), findsOneWidget);
+      expect(find.text('#2'), findsOneWidget);
+      expect(find.text('ID da avaliação:'), findsNothing);
       expect(find.text('Funções do corpo'), findsOneWidget);
       await tester.tap(find.text('Consultar respostas originais'));
       await tester.pumpAndSettle();

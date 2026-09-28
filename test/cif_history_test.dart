@@ -91,6 +91,35 @@ void main() {
     expect(provider.entries.every((entry) => entry.patientId == 1), isTrue);
   });
 
+  test(
+    'numera por paciente na ordem de criação, não pela data exibida',
+    () async {
+      final service = FakeCifService()
+        ..historyEntries = [
+          historyEntry(id: 25, date: DateTime(2026, 1, 1)),
+          historyEntry(id: 7, date: DateTime(2026, 12, 1)),
+          historyEntry(id: 12, date: DateTime(2026, 6, 1)),
+          historyEntry(id: 8, patientId: 2),
+        ];
+      final provider = CifHistoryProvider(service: service);
+      addTearDown(provider.dispose);
+
+      await provider.ensureLoaded(patientId: 1);
+      await provider.ensureLoaded(patientId: 1);
+      expect(service.historyCalls, 1);
+      expect(provider.assessmentNumbers, {7: 1, 12: 2, 25: 3});
+      expect(provider.assessmentNumberFor(patientId: 1, assessmentId: 25), 3);
+      expect(
+        provider.assessmentNumberFor(patientId: 2, assessmentId: 25),
+        isNull,
+      );
+
+      await provider.ensureLoaded(patientId: 2);
+      expect(provider.assessmentNumbers, {8: 1});
+      expect(provider.assessmentNumberFor(patientId: 2, assessmentId: 8), 1);
+    },
+  );
+
   test('erro de rede e retry do histórico', () async {
     final service = FakeCifService()..failHistory = true;
     final provider = CifHistoryProvider(service: service);
@@ -125,6 +154,7 @@ void main() {
     expect(created.responses, isEmpty);
     expect(created.assessmentDate, DateTime(2026, 10, 5));
     expect(provider.entries.map((entry) => entry.id), [8, 1]);
+    expect(provider.assessmentNumbers, {1: 1, 8: 2});
     expect(service.createCalls, 1);
   });
 
@@ -170,6 +200,39 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('cif-history-open-summary-2')));
     await tester.pumpAndSettle();
     expect(find.text('RESUMO CIF'), findsOneWidget);
+  });
+
+  testWidgets('histórico mostra sequência local para IDs globais alternados', (
+    tester,
+  ) async {
+    final service = FakeCifService()
+      ..historyEntries = [
+        historyEntry(id: 25),
+        historyEntry(id: 7),
+        historyEntry(id: 12),
+        historyEntry(id: 8, patientId: 2),
+      ];
+    final history = CifHistoryProvider(service: service);
+    final patient = PatientProvider()
+      ..setPatient({'id': 1, 'nome_completo': 'Paciente', 'sexo': 'Feminino'});
+    addTearDown(history.dispose);
+    addTearDown(patient.dispose);
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: patient),
+          ChangeNotifierProvider.value(value: history),
+        ],
+        child: const MaterialApp(home: CifHistoryScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Avaliação #1'), findsOneWidget);
+    expect(find.text('Avaliação #2'), findsOneWidget);
+    expect(find.text('Avaliação #3'), findsOneWidget);
+    expect(find.text('Avaliação #25'), findsNothing);
   });
 
   testWidgets('seleciona duas concluídas para comparação', (tester) async {

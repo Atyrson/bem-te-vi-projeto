@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import 'package:projeto/Core/Models/cifModels.dart';
 import 'package:projeto/Core/Providers/cifComparisonProvider.dart';
+import 'package:projeto/Core/Providers/cifHistoryProvider.dart';
 import 'package:projeto/Core/Providers/patientProvider.dart';
 import 'package:projeto/Presentation/Screens/cifComparison.dart';
 
@@ -173,23 +174,29 @@ void main() {
   });
 
   testWidgets('exibe apenas valores e diferenças numéricas', (tester) async {
-    final service = FakeCifService();
+    final service = FakeCifService()
+      ..historyEntries = [
+        CifAssessmentHistoryEntry.fromAssessment(fakeAssessment(id: 12)),
+        CifAssessmentHistoryEntry.fromAssessment(fakeAssessment(id: 7)),
+      ];
     service.assessmentsToConsult.addAll({
-      1: comparisonAssessment(
-        id: 1,
+      7: comparisonAssessment(
+        id: 7,
         chapters: {'b1': chapter('b1', 0)},
         areas: {'b': area('b', 1)},
       ),
-      2: comparisonAssessment(
-        id: 2,
+      12: comparisonAssessment(
+        id: 12,
         chapters: {'b1': chapter('b1', 2)},
         areas: {'b': area('b', 3)},
       ),
     });
     final comparisonProvider = CifComparisonProvider(service: service);
+    final historyProvider = CifHistoryProvider(service: service);
     final patientProvider = PatientProvider()
       ..setPatient({'id': 1, 'nome_completo': 'Paciente', 'sexo': 'Feminino'});
     addTearDown(comparisonProvider.dispose);
+    addTearDown(historyProvider.dispose);
     addTearDown(patientProvider.dispose);
 
     await tester.pumpWidget(
@@ -197,17 +204,21 @@ void main() {
         providers: [
           ChangeNotifierProvider.value(value: patientProvider),
           ChangeNotifierProvider.value(value: comparisonProvider),
+          ChangeNotifierProvider.value(value: historyProvider),
         ],
         child: const MaterialApp(
           home: CifComparisonScreen(
-            firstAssessmentId: 1,
-            secondAssessmentId: 2,
+            firstAssessmentId: 7,
+            secondAssessmentId: 12,
           ),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
+    expect(find.text('#1 — 15/09/2026'), findsOneWidget);
+    expect(find.text('#2 — 15/09/2026'), findsOneWidget);
+    expect(find.text('#7 — 15/09/2026'), findsNothing);
     expect(find.text('1ª: 0.0'), findsOneWidget);
     expect(find.text('2ª: 2.0'), findsOneWidget);
     expect(find.text('Diferença (2ª − 1ª): 2.0'), findsNWidgets(2));

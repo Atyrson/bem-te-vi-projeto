@@ -100,6 +100,7 @@ class _CifHistoryScreenState extends State<CifHistoryScreen> {
     }
 
     final entries = history.entries;
+    final assessmentNumbers = history.assessmentNumbers;
     return Column(
       children: [
         _buildPatientHeader(patient, entries.length),
@@ -113,8 +114,11 @@ class _CifHistoryScreenState extends State<CifHistoryScreen> {
                     key: const ValueKey('cif-history-list'),
                     padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
                     itemCount: entries.length,
-                    itemBuilder: (context, index) =>
-                        _buildEntry(entries[index], patient.id!),
+                    itemBuilder: (context, index) => _buildEntry(
+                      entries[index],
+                      patient.id!,
+                      assessmentNumbers[entries[index].id],
+                    ),
                   ),
                 ),
         ),
@@ -133,7 +137,11 @@ class _CifHistoryScreenState extends State<CifHistoryScreen> {
     );
   }
 
-  Widget _buildEntry(CifAssessmentHistoryEntry entry, int selectedPatientId) {
+  Widget _buildEntry(
+    CifAssessmentHistoryEntry entry,
+    int selectedPatientId,
+    int? assessmentNumber,
+  ) {
     final selected = _selectedAssessmentIds.contains(entry.id);
     final canSelect = entry.isCompleted && entry.resultsAvailable;
     final isSafeEntry = entry.patientId == selectedPatientId;
@@ -164,7 +172,11 @@ class _CifHistoryScreenState extends State<CifHistoryScreen> {
                           ? Icons.fact_check_outlined
                           : Icons.edit_note_outlined,
                     ),
-              title: Text('Avaliação #${entry.id}'),
+              title: Text(
+                assessmentNumber == null
+                    ? 'Avaliação'
+                    : 'Avaliação #$assessmentNumber',
+              ),
               subtitle: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

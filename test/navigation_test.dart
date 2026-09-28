@@ -299,8 +299,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Paciente Dois'), findsOneWidget);
-    expect(find.text('Avaliação #2'), findsOneWidget);
-    expect(find.text('Avaliação #1'), findsNothing);
+    expect(find.text('Avaliação #1'), findsOneWidget);
+    expect(find.text('Avaliação #2'), findsNothing);
     expect(history.patientId, 2);
   });
 

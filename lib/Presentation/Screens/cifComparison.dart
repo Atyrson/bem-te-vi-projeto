@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import 'package:projeto/Core/Models/cifModels.dart';
 import 'package:projeto/Core/Providers/cifComparisonProvider.dart';
+import 'package:projeto/Core/Providers/cifHistoryProvider.dart';
 import 'package:projeto/Core/Providers/patientProvider.dart';
 
 class CifComparisonScreen extends StatefulWidget {
@@ -35,7 +36,19 @@ class _CifComparisonScreenState extends State<CifComparisonScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _loadComparison();
+      _loadAssessmentNumbers();
     });
+  }
+
+  Future<void> _loadAssessmentNumbers() async {
+    final history = context.read<CifHistoryProvider?>();
+    final patientId = context.read<PatientProvider>().id;
+    if (history == null || patientId == null) return;
+    try {
+      await history.ensureLoaded(patientId: patientId);
+    } catch (_) {
+      // A comparação continua disponível mesmo sem a numeração.
+    }
   }
 
   Future<void> _loadComparison() async {
@@ -110,6 +123,19 @@ class _CifComparisonScreenState extends State<CifComparisonScreen> {
   }
 
   Widget _metadata(PatientProvider patient, CifComparisonResult comparison) {
+    final history = context.watch<CifHistoryProvider?>();
+    final firstNumber = patient.id == null
+        ? null
+        : history?.assessmentNumberFor(
+            patientId: patient.id!,
+            assessmentId: comparison.firstAssessmentId,
+          );
+    final secondNumber = patient.id == null
+        ? null
+        : history?.assessmentNumberFor(
+            patientId: patient.id!,
+            assessmentId: comparison.secondAssessmentId,
+          );
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -123,11 +149,11 @@ class _CifComparisonScreenState extends State<CifComparisonScreen> {
             const SizedBox(height: 8),
             _line(
               '1ª avaliação',
-              '#${comparison.firstAssessmentId} — ${_formatDate(comparison.firstAssessmentDate)}',
+              '${firstNumber == null ? '' : '#$firstNumber — '}${_formatDate(comparison.firstAssessmentDate)}',
             ),
             _line(
               '2ª avaliação',
-              '#${comparison.secondAssessmentId} — ${_formatDate(comparison.secondAssessmentDate)}',
+              '${secondNumber == null ? '' : '#$secondNumber — '}${_formatDate(comparison.secondAssessmentDate)}',
             ),
             _line('Catálogo', comparison.firstCatalogVersion),
             _line('Regras', comparison.firstRulesVersion),

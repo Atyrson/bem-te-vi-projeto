@@ -12,6 +12,7 @@ class CifHistoryProvider extends ChangeNotifier {
   String? _errorMessage;
   bool _isLoading = false;
   bool _isCreating = false;
+  bool _hasLoaded = false;
   int _requestNumber = 0;
   Future<List<CifAssessmentHistoryEntry>>? _loadingFuture;
   Future<void> Function()? _retryAction;
@@ -30,6 +31,39 @@ class CifHistoryProvider extends ChangeNotifier {
   bool get criando => _isCreating;
   bool get hasError => _errorMessage != null;
 
+  /// A posição visível é calculada pela ordem de criação dentro do paciente.
+  /// O ID global continua sendo usado apenas para localizar o registro na API.
+  Map<int, int> get assessmentNumbers {
+    final ids =
+        _entries
+            .where((entry) => entry.patientId == _patientId && entry.id > 0)
+            .map((entry) => entry.id)
+            .toSet()
+            .toList()
+          ..sort();
+    return {
+      for (var index = 0; index < ids.length; index++) ids[index]: index + 1,
+    };
+  }
+
+  int? assessmentNumberFor({
+    required int patientId,
+    required int assessmentId,
+  }) {
+    if (_patientId != patientId) return null;
+    return assessmentNumbers[assessmentId];
+  }
+
+  Future<List<CifAssessmentHistoryEntry>> ensureLoaded({
+    required int? patientId,
+  }) {
+    if (_patientId == patientId) {
+      if (_isLoading && _loadingFuture != null) return _loadingFuture!;
+      if (_hasLoaded) return Future.value(_entries);
+    }
+    return load(patientId: patientId);
+  }
+
   Future<List<CifAssessmentHistoryEntry>> load({required int? patientId}) {
     if (_patientId == patientId && _isLoading && _loadingFuture != null) {
       return _loadingFuture!;
@@ -38,6 +72,7 @@ class CifHistoryProvider extends ChangeNotifier {
     _patientId = patientId;
     final requestNumber = ++_requestNumber;
     _entries = const [];
+    _hasLoaded = false;
     _errorMessage = null;
     _isLoading = true;
     _retryAction = () async {
@@ -81,6 +116,7 @@ class CifHistoryProvider extends ChangeNotifier {
       _entries = List.unmodifiable(
         loaded.where((entry) => entry.patientId == patientId),
       );
+      _hasLoaded = true;
       _errorMessage = null;
       notifyListeners();
       return _entries;

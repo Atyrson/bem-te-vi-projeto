@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import 'package:projeto/Core/Models/cifModels.dart';
 import 'package:projeto/Core/Providers/cifFormProvider.dart';
+import 'package:projeto/Core/Providers/cifHistoryProvider.dart';
 import 'package:projeto/Core/Providers/patientProvider.dart';
 
 /// Quadro resumo da CIF. Todos os valores apresentados vêm do backend.
@@ -32,7 +33,19 @@ class _CifSummaryScreenState extends State<CifSummaryScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _loadSummary();
+      _loadAssessmentNumbers();
     });
+  }
+
+  Future<void> _loadAssessmentNumbers() async {
+    final history = context.read<CifHistoryProvider?>();
+    final patientId = context.read<PatientProvider>().id;
+    if (history == null || patientId == null) return;
+    try {
+      await history.ensureLoaded(patientId: patientId);
+    } catch (_) {
+      // O resumo continua disponível mesmo se o histórico falhar.
+    }
   }
 
   Future<void> _loadSummary() async {
@@ -118,6 +131,13 @@ class _CifSummaryScreenState extends State<CifSummaryScreen> {
   }
 
   Widget _buildMetadata(PatientProvider patient, CifSummary summary) {
+    final history = context.watch<CifHistoryProvider?>();
+    final assessmentNumber = patient.id == null
+        ? null
+        : history?.assessmentNumberFor(
+            patientId: patient.id!,
+            assessmentId: summary.assessmentId,
+          );
     final identifier = patient.cpf?.trim().isNotEmpty == true
         ? 'CPF: ${patient.cpf}'
         : 'ID do paciente: ${patient.id}';
@@ -138,7 +158,8 @@ class _CifSummaryScreenState extends State<CifSummaryScreen> {
               'Data da avaliação',
               _dateFormat.format(summary.assessmentDate),
             ),
-            _metadataLine('ID da avaliação', summary.assessmentId.toString()),
+            if (assessmentNumber != null)
+              _metadataLine('Número da avaliação', '#$assessmentNumber'),
             _metadataLine('Status', summary.status),
             if (summary.resultStatus != null)
               _metadataLine('Status do resultado', summary.resultStatus!),

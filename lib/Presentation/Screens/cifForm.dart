@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import 'package:projeto/Core/Models/cifModels.dart';
 import 'package:projeto/Core/Providers/cifFormProvider.dart';
+import 'package:projeto/Core/Providers/cifHistoryProvider.dart';
 import 'package:projeto/Core/Providers/patientProvider.dart';
 import 'package:projeto/Presentation/Widgets/cifFieldInput.dart';
 
@@ -37,7 +38,19 @@ class _CifFormScreenState extends State<CifFormScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _initializeForPatient();
+      _loadAssessmentNumbers();
     });
+  }
+
+  Future<void> _loadAssessmentNumbers() async {
+    final history = context.read<CifHistoryProvider?>();
+    final patientId = context.read<PatientProvider>().id;
+    if (history == null || patientId == null) return;
+    try {
+      await history.ensureLoaded(patientId: patientId);
+    } catch (_) {
+      // A numeração não impede o preenchimento se o histórico falhar.
+    }
   }
 
   Future<void> _initializeForPatient() async {
@@ -160,6 +173,13 @@ class _CifFormScreenState extends State<CifFormScreen> {
     PatientProvider patient,
     CifFormProvider provider,
   ) {
+    final history = context.watch<CifHistoryProvider?>();
+    final assessmentNumber = patient.id == null || provider.assessmentId == null
+        ? null
+        : history?.assessmentNumberFor(
+            patientId: patient.id!,
+            assessmentId: provider.assessmentId!,
+          );
     final date = provider.assessmentDate ?? DateTime.now();
     final identifier = patient.cpf?.trim().isNotEmpty == true
         ? 'CPF: ${patient.cpf}'
@@ -193,7 +213,9 @@ class _CifFormScreenState extends State<CifFormScreen> {
             ),
             if (provider.assessmentId != null)
               Text(
-                'Rascunho #${provider.assessmentId}',
+                assessmentNumber == null
+                    ? 'Rascunho'
+                    : 'Rascunho #$assessmentNumber',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
           ],
