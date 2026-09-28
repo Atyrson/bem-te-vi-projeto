@@ -16,6 +16,7 @@ from models import (
     ElectrodiagnosisCreate, 
     MeemCreate, 
     PatientCreate, 
+    PatientUpdateByName,
     PatientResponse,
     SignupRequest,
     LoginRequest,
@@ -602,7 +603,7 @@ def get_all_patients():
             conn.close()
 
 @app.put("/api/v1/patients/update-by-name", summary="Atualiza dados de um paciente buscando pelo nome")
-def update_patient_by_name(patient_data: PatientCreate):
+def update_patient_by_name(patient_data: PatientUpdateByName):
     conn = None
     try:
         conn = get_db_connection()

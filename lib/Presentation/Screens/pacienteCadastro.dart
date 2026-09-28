@@ -80,10 +80,20 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
   }
 
   Future<void> _registerPatient() async {
-    if (_nameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("O nome é obrigatório!")));
+    final missingFields = <String>[
+      if (_nameController.text.trim().isEmpty) 'nome completo',
+      if (_dateOfBirth == null) 'data de nascimento',
+      if (_selectedSex == null) 'sexo',
+      if (_cpfController.text.trim().isEmpty) 'CPF',
+    ];
+    if (missingFields.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Preencha os campos obrigatórios: ${missingFields.join(', ')}.',
+          ),
+        ),
+      );
       return;
     }
 
@@ -196,7 +206,9 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildLabel("Nome Completo"),
+            const Text('* Campos obrigatórios'),
+            const SizedBox(height: 12),
+            _buildLabel("Nome Completo *"),
             _buildGreenTextField(controller: _nameController),
             const SizedBox(height: 16),
 
@@ -207,7 +219,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildLabel("Data de nascimento"),
+                      _buildLabel("Data de nascimento *"),
                       _buildGreenTextField(
                         controller: _dobController,
                         isDate: true,
@@ -220,7 +232,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildLabel("Sexo"),
+                      _buildLabel("Sexo *"),
                       Container(
                         height: 48,
                         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -303,7 +315,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildLabel("CPF"),
+                      _buildLabel("CPF *"),
                       _buildGreenTextField(
                         controller: _cpfController,
                         isNumber: true,

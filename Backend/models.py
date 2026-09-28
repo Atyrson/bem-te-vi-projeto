@@ -1,5 +1,5 @@
-from pydantic import BaseModel, EmailStr
-from typing import Dict, Optional, List 
+from pydantic import BaseModel, EmailStr, StringConstraints
+from typing import Annotated, Dict, Optional, List
 from datetime import date
 
 
@@ -98,7 +98,7 @@ class MeemCreate(BaseModel):
     escolaridade: str
     pontos: PontosMeem
 
-class PatientCreate(BaseModel):
+class PatientUpdateByName(BaseModel):
     nome_completo: str
     data_nascimento: Optional[date] = None
     peso: Optional[float] = None
@@ -110,6 +110,14 @@ class PatientCreate(BaseModel):
     email: Optional[EmailStr] = None
     emergencia_nome: Optional[str] = None
     emergencia_telefone: Optional[str] = None
+
+RequiredPatientText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+class PatientCreate(PatientUpdateByName):
+    nome_completo: RequiredPatientText
+    data_nascimento: date
+    cpf: RequiredPatientText
+    sexo: RequiredPatientText
 
 class PatientResponse(BaseModel):
     id: int
