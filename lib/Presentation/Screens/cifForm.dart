@@ -27,6 +27,7 @@ class _CifFormScreenState extends State<CifFormScreen> {
   bool _savingOnExit = false;
   final Set<String> _expandedAreas = {};
   final Set<String> _expandedChapters = {};
+  final Map<String, GlobalKey> _fieldKeys = {};
 
   @override
   void didChangeDependencies() {
@@ -69,6 +70,61 @@ class _CifFormScreenState extends State<CifFormScreen> {
       );
     } catch (_) {
       // O provider mantém o erro e os dados locais para a nova tentativa.
+    }
+  }
+
+  int? _nextUnansweredIndex(CifFormProvider provider, int currentIndex) {
+    final fields = provider.fields;
+    for (var offset = 1; offset < fields.length; offset++) {
+      final candidate = (currentIndex + offset) % fields.length;
+      if (provider.answerFor(fields[candidate].key) == null) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  void _scrollToField(CifField field, {bool animate = true}) {
+    final chapterKey = '${field.areaCode}|${field.chapterCode}';
+    final needsExpansion =
+        !_expandedAreas.contains(field.areaCode) ||
+        !_expandedChapters.contains(chapterKey);
+    if (needsExpansion) {
+      setState(() {
+        _expandedAreas.add(field.areaCode);
+        _expandedChapters.add(chapterKey);
+      });
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final targetContext = _fieldKeys[field.key]?.currentContext;
+      if (targetContext == null) return;
+      Scrollable.ensureVisible(
+        targetContext,
+        alignment: 1,
+        duration: animate ? const Duration(milliseconds: 350) : Duration.zero,
+        curve: Curves.easeInOut,
+      );
+    });
+  }
+
+  void _setAnswerAndScroll(
+    CifField field,
+    int? value,
+    CifFormProvider provider,
+  ) {
+    provider.setAnswer(field.key, value);
+    if (value == null) return;
+
+    final currentIndex = provider.fields.indexWhere(
+      (candidate) => candidate.key == field.key,
+    );
+    if (currentIndex < 0) return;
+
+    final nextIndex = _nextUnansweredIndex(provider, currentIndex);
+    if (nextIndex != null) {
+      _scrollToField(provider.fields[nextIndex]);
     }
   }
 
@@ -134,7 +190,7 @@ class _CifFormScreenState extends State<CifFormScreen> {
       return _completedState(provider);
     }
 
-    _syncExpansion(provider.form!);
+    _syncExpansion(provider.form!, provider);
     final items = _visibleItems(provider.form!);
     final hasPreview =
         provider.preview != null || provider.validationResult != null;
@@ -642,13 +698,14 @@ class _CifFormScreenState extends State<CifFormScreen> {
             .toList(growable: false) ??
         const [0, 1, 2, 3, 4];
     return Padding(
+      key: _fieldKeys.putIfAbsent(field.key, GlobalKey.new),
       padding: const EdgeInsets.only(left: 20, top: 5),
       child: CifFieldInput(
         field: field,
         value: fieldValue,
         allowedValues: scale.isEmpty ? const [0, 1, 2, 3, 4] : scale,
         enabled: !provider.isCompleted,
-        onChanged: (value) => provider.setAnswer(field.key, value),
+        onChanged: (value) => _setAnswerAndScroll(field, value, provider),
       ),
     );
   }
@@ -670,7 +727,7 @@ class _CifFormScreenState extends State<CifFormScreen> {
     return items;
   }
 
-  void _syncExpansion(CifForm form) {
+  void _syncExpansion(CifForm form, CifFormProvider provider) {
     final identity =
         '${form.sex}|${form.catalogVersion}|${form.fields.length}|${form.fields.isEmpty ? '' : form.fields.first.key}';
     if (_formKey == identity) return;
@@ -686,6 +743,15 @@ class _CifFormScreenState extends State<CifFormScreen> {
         );
       }
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final firstUnanswered = form.fields.indexWhere(
+        (field) => provider.answerFor(field.key) == null,
+      );
+      if (firstUnanswered >= 0) {
+        _scrollToField(form.fields[firstUnanswered], animate: false);
+      }
+    });
   }
 
   Widget _blockedMessage(String message) {

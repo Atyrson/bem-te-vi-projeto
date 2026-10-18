@@ -23,7 +23,7 @@ class AppDrawer extends StatelessWidget {
           ),
           ListTile(
             key: const ValueKey('app-drawer-cif'),
-            leading: const Icon(Icons.history_outlined),
+            leading: const Icon(Icons.description),
             title: const Text('CIF'),
             onTap: () => _openCifHistory(context),
           ),
