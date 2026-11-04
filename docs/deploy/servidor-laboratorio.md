@@ -4,18 +4,18 @@ Roteiro para instalar o PostgreSQL e a API FastAPI num servidor Linux acessado p
 
 Premissas (ajuste se o servidor for diferente):
 
-- Ubuntu Server 24.04 LTS (já traz Python 3.12, compatível com as versões fixadas em `Backend/requirements.txt`).
-- Você tem um usuário com `sudo` no servidor.
-- O servidor tem um nome ou IP fixo na rede do laboratório, aqui chamado `bemtevi.lab.local`.
+- Máquina Windows 11 (22H2 ou mais recente) com WSL2 e Ubuntu 24.04 LTS. O Ubuntu já traz Python 3.12, compatível com as versões fixadas em `Backend/requirements.txt`. A seção 1 prepara o Windows e o WSL para funcionarem como servidor.
+- Você tem acesso de administrador no Windows e um usuário com `sudo` no Ubuntu.
+- A máquina tem um nome ou IP fixo na rede do laboratório, aqui chamado `bemtevi.lab.local`.
 - A branch de produção é `main`. Versões publicadas recebem uma tag `vX.Y.Z`.
 
 Arquitetura:
 
 ```
-App Android ──HTTPS──▶ nginx :443 ──▶ uvicorn 127.0.0.1:8000 (systemd) ──▶ PostgreSQL 127.0.0.1:5432
+App Android ──HTTPS──▶ Windows (firewall) ──▶ WSL: nginx :443 ──▶ uvicorn 127.0.0.1:8000 (systemd) ──▶ PostgreSQL 127.0.0.1:5432
 ```
 
-A API e o banco escutam só em `127.0.0.1`. Apenas o nginx fica exposto, e só na rede do laboratório.
+A API e o banco escutam só em `127.0.0.1` dentro do WSL. Apenas o nginx fica exposto, e só na rede do laboratório.
 
 ---
 
@@ -37,28 +37,114 @@ Até lá, use o servidor só com os dados fictícios, ou só dentro da rede/VPN 
 
 ---
 
-## 1. Preparar o servidor
+## 1. Preparar o Windows e o WSL
+
+Por padrão, o WSL2 não se comporta como servidor. Ele só liga quando alguém abre um terminal, desliga sozinho quando fica ocioso e fica atrás de uma rede NAT que os celulares não alcançam. Os passos abaixo resolvem isso. Todos os comandos desta seção rodam no **PowerShell como administrador**, exceto onde indicado.
+
+### 1.1 Instalar o Ubuntu
+
+```powershell
+wsl --update
+wsl --install -d Ubuntu-24.04
+```
+
+Crie o usuário do Ubuntu quando for solicitado.
+
+### 1.2 Rede espelhada e WSL sempre ligado
+
+Crie ou edite `C:\Users\<usuário-do-windows>\.wslconfig`:
+
+```ini
+[wsl2]
+networkingMode=mirrored
+vmIdleTimeout=-1
+
+[experimental]
+hostAddressLoopback=true
+```
+
+Com `networkingMode=mirrored`, o WSL usa o mesmo IP do Windows, e uma porta aberta no Ubuntu fica acessível na rede pelo IP da máquina. `vmIdleTimeout=-1` impede que a VM desligue por ociosidade.
+
+### 1.3 Ativar o systemd no Ubuntu
+
+Dentro do Ubuntu:
 
 ```bash
-ssh usuario@bemtevi.lab.local
+sudo tee /etc/wsl.conf >/dev/null <<'EOF'
+[boot]
+systemd=true
+EOF
+```
+
+De volta ao PowerShell, reinicie o WSL e confira:
+
+```powershell
+wsl --shutdown
+wsl -d Ubuntu-24.04 -- systemctl is-system-running
+```
+
+A resposta deve ser `running` ou `degraded`. Os serviços do guia (PostgreSQL, nginx, API) dependem do systemd.
+
+### 1.4 Ligar o WSL junto com o Windows
+
+Sem uma sessão aberta, o WSL não sobe depois de um reinício (por exemplo, após o Windows Update). Crie uma tarefa agendada que inicia o Ubuntu no boot, mesmo sem ninguém logado:
+
+```powershell
+$acao = New-ScheduledTaskAction -Execute "wsl.exe" -Argument "-d Ubuntu-24.04 -u root -- sleep infinity"
+$gatilho = New-ScheduledTaskTrigger -AtStartup
+$config = New-ScheduledTaskSettingsSet -ExecutionTimeLimit 0 -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
+Register-ScheduledTask -TaskName "BemTeVi-WSL" -Action $acao -Trigger $gatilho -Settings $config -User "<usuário-do-windows>" -Password "<senha-do-windows>" -RunLevel Highest
+```
+
+A tarefa precisa rodar com o mesmo usuário do Windows que instalou o Ubuntu, porque cada usuário do Windows tem as próprias distribuições WSL.
+
+Configure também a energia da máquina: nunca suspender nem hibernar (Configurações → Sistema → Energia), e defina horário de reinício do Windows Update fora do horário de atendimento.
+
+### 1.5 Firewall do Windows
+
+Com a rede espelhada, quem filtra o acesso externo é o firewall do Windows, junto com o firewall do Hyper-V que o WSL usa. Libere HTTPS e SSH apenas para a rede do laboratório (troque a faixa):
+
+```powershell
+$rede = "10.0.0.0/16"
+New-NetFirewallRule -DisplayName "BemTeVi HTTPS" -Direction Inbound -Protocol TCP -LocalPort 443 -RemoteAddress $rede -Action Allow
+New-NetFirewallRule -DisplayName "BemTeVi SSH WSL" -Direction Inbound -Protocol TCP -LocalPort 2222 -RemoteAddress $rede -Action Allow
+New-NetFirewallHyperVRule -Name "BemTeVi-HTTPS" -DisplayName "BemTeVi HTTPS" -Direction Inbound -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -Protocol TCP -LocalPorts 443 -RemoteAddresses $rede -Action Allow
+New-NetFirewallHyperVRule -Name "BemTeVi-SSH" -DisplayName "BemTeVi SSH WSL" -Direction Inbound -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -Protocol TCP -LocalPorts 2222 -RemoteAddresses $rede -Action Allow
+```
+
+O GUID `{40E0AC32-...}` identifica o WSL no firewall do Hyper-V.
+
+### 1.6 SSH direto no Ubuntu
+
+Para administrar de outra máquina, rode um servidor SSH dentro do Ubuntu na porta 2222. A porta 22 fica livre caso o Windows já use o OpenSSH dele. Dentro do Ubuntu:
+
+```bash
+sudo apt install -y openssh-server
+sudo mkdir -p /etc/ssh/sshd_config.d
+printf 'Port 2222\nPasswordAuthentication no\n' | sudo tee /etc/ssh/sshd_config.d/bemtevi.conf
+mkdir -p -m 700 ~/.ssh && nano ~/.ssh/authorized_keys   # cole sua chave pública
+sudo systemctl enable --now ssh
+```
+
+No Ubuntu 24.04, o SSH é ativado por socket. Se a porta não mudar, rode `sudo systemctl disable --now ssh.socket && sudo systemctl restart ssh`.
+
+A partir da sua máquina: `ssh -p 2222 usuario@bemtevi.lab.local`. Os comandos `ssh` do resto do guia usam essa porta.
+
+## 2. Preparar o Ubuntu
+
+```bash
+ssh -p 2222 usuario@bemtevi.lab.local
 
 sudo apt update && sudo apt upgrade -y
-sudo apt install -y git python3.12-venv postgresql nginx ufw
+sudo apt install -y git python3.12-venv postgresql nginx
 
 # Usuário de sistema sem login para rodar a API
 sudo adduser --system --group --home /opt/bemtevi bemtevi
 ```
 
-Firewall: SSH e HTTPS liberados apenas para a rede do laboratório (troque a faixa):
+O `ufw` não é necessário no WSL: o controle de acesso é feito pelo firewall do Windows (seção 1.5).
 
-```bash
-sudo ufw default deny incoming
-sudo ufw allow from 10.0.0.0/16 to any port 22 proto tcp
-sudo ufw allow from 10.0.0.0/16 to any port 443 proto tcp
-sudo ufw enable
-```
-
-## 2. Banco de dados
+## 3. Banco de dados
 
 O PostgreSQL do Ubuntu já escuta apenas em `localhost`. Crie usuário e banco com uma senha nova:
 
@@ -72,11 +158,12 @@ CREATE DATABASE bemtivi_db OWNER bemtevi_user;
 SQL
 ```
 
-## 3. Código da API
+## 4. Código da API
 
 Use uma *deploy key* somente leitura para o servidor clonar o repositório:
 
 ```bash
+sudo -u bemtevi mkdir -p -m 700 /opt/bemtevi/.ssh
 sudo -u bemtevi ssh-keygen -t ed25519 -N '' -f /opt/bemtevi/.ssh/id_ed25519
 sudo cat /opt/bemtevi/.ssh/id_ed25519.pub
 ```
@@ -90,7 +177,7 @@ sudo -u bemtevi python3.12 -m venv venv
 sudo -u bemtevi venv/bin/pip install -r requirements.txt
 ```
 
-Configuração fora do repositório, legível só pelo serviço:
+Configuração fora do repositório, legível só pelo serviço. O comando abaixo usa a variável `$SENHA` da seção 3; se você abriu outra sessão SSH, defina-a de novo com a senha guardada (`SENHA='...'`).
 
 ```bash
 sudo mkdir -p /etc/bemtevi
@@ -103,8 +190,9 @@ DB_PASSWORD=$SENHA
 EOF
 sudo chown root:bemtevi /etc/bemtevi/api.env
 sudo chmod 640 /etc/bemtevi/api.env
-sudo -u bemtevi rm -f /opt/bemtevi/app/Backend/.env   # evita usar a senha versionada
 ```
+
+O `Backend/.env` versionado continua no clone, mas não é usado: o `load_dotenv()` de `database.py` não sobrescreve variáveis que já existem no ambiente, e as de `/etc/bemtevi/api.env` são carregadas antes. Não apague esse arquivo no servidor, porque um arquivo versionado apagado deixa o clone com alteração local e pode bloquear o `git checkout` do `deploy.sh`.
 
 Criar o schema e aplicar as migrações (o script é idempotente e registra o que já aplicou em `bemtevi_schema_migrations`):
 
@@ -115,7 +203,7 @@ sudo -u bemtevi bash -c 'set -a; . /etc/bemtevi/api.env; venv/bin/python criar_t
 
 **Não rode `popular_tudo.py` nem `seed_usuarios.py` em produção.** Eles inserem pacientes fictícios e usuários com senhas públicas (`admin123`). Crie os usuários reais da equipe individualmente.
 
-## 4. Serviço systemd
+## 5. Serviço systemd
 
 `/etc/systemd/system/bemtevi-api.service`:
 
@@ -147,7 +235,7 @@ sudo systemctl enable --now bemtevi-api
 curl -s localhost:8000/ && journalctl -u bemtevi-api -n 20
 ```
 
-## 5. nginx com HTTPS
+## 6. nginx com HTTPS
 
 Peça ao TI do laboratório um certificado para `bemtevi.lab.local` (ou use Let's Encrypt se o servidor tiver nome público). Para teste interno, um autoassinado funciona, mas o Android só confia nele se o app for configurado para isso; prefira um certificado de verdade.
 
@@ -181,7 +269,7 @@ sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-## 6. Backup do banco
+## 7. Backup do banco
 
 Dump diário com retenção de 30 dias, em `/etc/cron.d/bemtevi-backup`:
 
@@ -193,7 +281,7 @@ Dump diário com retenção de 30 dias, em `/etc/cron.d/bemtevi-backup`:
 sudo mkdir -p /var/backups/bemtevi && sudo chown postgres: /var/backups/bemtevi && sudo chmod 700 /var/backups/bemtevi
 ```
 
-Copie os dumps para outra máquina (o disco do servidor não é backup). Teste a restauração pelo menos uma vez:
+Copie os dumps para outra máquina. O disco do WSL fica num arquivo `ext4.vhdx` no mesmo disco do Windows, então nem `/var/backups` nem `/mnt/c` contam como cópia externa. Teste a restauração pelo menos uma vez:
 
 ```bash
 sudo -u postgres createdb bemtivi_restore_teste
@@ -202,7 +290,7 @@ sudo -u postgres pg_restore -d bemtivi_restore_teste /var/backups/bemtevi/<arqui
 
 ---
 
-## 7. Publicar atualizações
+## 8. Publicar atualizações
 
 ### Fluxo de trabalho
 
@@ -250,10 +338,12 @@ else
 fi
 ```
 
+O script trabalha com tags. Antes do primeiro uso, crie a tag da versão que está no servidor (na sua máquina: `git tag v1.0.0 main && git push origin v1.0.0`).
+
 Da sua máquina, a atualização vira um comando:
 
 ```bash
-ssh usuario@bemtevi.lab.local 'sudo /opt/bemtevi/deploy.sh v1.1.0'
+ssh -p 2222 usuario@bemtevi.lab.local 'sudo /opt/bemtevi/deploy.sh v1.1.0'
 ```
 
 Para voltar uma versão, rode o mesmo script com a tag anterior. Se a versão nova tinha migração, voltar o código não desfaz o banco; nesse caso restaure o dump `pre-deploy_*` gerado automaticamente.
